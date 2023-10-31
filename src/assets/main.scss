@@ -1,0 +1,7 @@
+@mixin shadow($offset_x, $offset_y, $blur_radius, $spread_radius, $color) {
+    box-shadow: $offset_x $offset_y $blur_radius $spread_radius $color;
+}
+
+@mixin t-shadow($width, $color) {
+    text-shadow: 0 0 $width $color, 0 0 $width $color, 0 0 $width $color, 0 0 $width $color;
+}
