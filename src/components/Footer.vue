@@ -1,19 +1,12 @@
 <template>
   <div>
-    <footer class="footer">
-      Copyright © 2023 MapleStoryToobox
-    </footer>
+    <footer class="text-center m-4">Copyright © 2024 MapleStoryToobox</footer>
   </div>
 </template>
 
-<script setup>
-</script>
-
 <style lang="scss" scoped>
-.footer {
-  text-align: center;
-  font-size: 12px;
-  padding-top: 1%;
-  padding-bottom: 1%;
+footer {
+  font-size: 0.9rem;
+  color: var(--color-black-soft);
 }
 </style>
