@@ -8,29 +8,17 @@ import CaretDownIcon from './icons/IconCaretDown.vue'
     <nav class="navbar navbar-expand-lg fixed-top navbar-dark">
       <div class="container-lg">
         <a class="navbar-brand" href="/"><img class="icon-brand" src="@/assets/img/brand.png" /></a>
-        <button
-          class="navbar-toggler"
-          type="button"
-          data-bs-toggle="collapse"
-          data-bs-target="#navbarSupportedContent"
-          aria-controls="navbarSupportedContent"
-          aria-expanded="false"
-          aria-label="Toggle navigation"
-        >
+        <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarSupportedContent"
+          aria-controls="navbarSupportedContent" aria-expanded="false" aria-label="Toggle navigation">
           <span class="navbar-toggler-icon"></span>
         </button>
         <div class="collapse navbar-collapse" id="navbarSupportedContent">
           <ul class="navbar-nav me-auto mb-2 mb-lg-0">
             <li class="nav-item dropdown me-2">
-              <a
-                class="nav-link dropdown-toggle underline"
-                href="#"
-                id="navbarDropdown"
-                role="button"
-                data-bs-toggle="dropdown"
-                aria-expanded="false"
-              >
-                實用工具 <CaretDownIcon />
+              <a class="nav-link dropdown-toggle underline" href="#" id="navbarDropdown" role="button"
+                data-bs-toggle="dropdown" aria-expanded="false">
+                實用工具
+                <CaretDownIcon />
               </a>
               <ul class="dropdown-menu" aria-labelledby="navbarDropdown">
                 <li>
@@ -41,15 +29,10 @@ import CaretDownIcon from './icons/IconCaretDown.vue'
               </ul>
             </li>
             <li class="nav-item dropdown me-2">
-              <a
-                class="nav-link dropdown-toggle underline"
-                href="#"
-                id="navbarDropdown"
-                role="button"
-                data-bs-toggle="dropdown"
-                aria-expanded="false"
-              >
-                最新活動 <CaretDownIcon />
+              <a class="nav-link dropdown-toggle underline" href="#" id="navbarDropdown" role="button"
+                data-bs-toggle="dropdown" aria-expanded="false">
+                最新活動
+                <CaretDownIcon />
               </a>
               <ul class="dropdown-menu" aria-labelledby="navbarDropdown">
                 <li><a class="dropdown-item" href="#">黃金蘋果</a></li>
@@ -57,48 +40,33 @@ import CaretDownIcon from './icons/IconCaretDown.vue'
                 <li><a class="dropdown-item" href="#">時尚隨機箱</a></li>
                 <li><a class="dropdown-item" href="#">萌獸卡牌包</a></li>
                 <li><a class="dropdown-item" href="#">寵物隨機箱</a></li>
-                <li><hr class="dropdown-divider" /></li>
+                <li>
+                  <hr class="dropdown-divider" />
+                </li>
                 <li>
                   <a class="dropdown-item" href="#">當期活動</a>
                 </li>
               </ul>
             </li>
             <li class="nav-item dropdown me-2">
-              <a
-                class="nav-link dropdown-toggle underline"
-                href="#"
-                id="navbarDropdown"
-                role="button"
-                data-bs-toggle="dropdown"
-                aria-expanded="false"
-              >
-                相關連結 <CaretDownIcon />
+              <a class="nav-link dropdown-toggle underline" href="#" id="navbarDropdown" role="button"
+                data-bs-toggle="dropdown" aria-expanded="false">
+                相關連結
+                <CaretDownIcon />
               </a>
               <ul class="dropdown-menu" aria-labelledby="navbarDropdown">
                 <li>
-                  <a
-                    class="dropdown-item"
-                    href="https://maplestory.beanfun.com/main"
-                    target="_blank"
-                  >
+                  <a class="dropdown-item" href="https://maplestory.beanfun.com/main" target="_blank">
                     遊戲官網
                   </a>
                 </li>
                 <li>
-                  <a
-                    class="dropdown-item"
-                    href="https://www.facebook.com/www.maplestory.msfans.com.tw"
-                    target="_blank"
-                  >
+                  <a class="dropdown-item" href="https://www.facebook.com/www.maplestory.msfans.com.tw" target="_blank">
                     FB粉絲團
                   </a>
                 </li>
                 <li>
-                  <a
-                    class="dropdown-item"
-                    href="https://forum.gamer.com.tw/B.php?bsn=7650"
-                    target="_blank"
-                  >
+                  <a class="dropdown-item" href="https://forum.gamer.com.tw/B.php?bsn=7650" target="_blank">
                     巴哈討論區
                   </a>
                 </li>
@@ -106,13 +74,10 @@ import CaretDownIcon from './icons/IconCaretDown.vue'
             </li>
           </ul>
           <form class="d-flex">
-            <input
-              class="form-control me-2 input-search"
-              type="search"
-              placeholder="輸入關鍵字以搜尋"
-              aria-label="Search"
-            />
-            <button class="btn btn-search text-nowrap" type="submit"><SearchIcon /> 搜尋</button>
+            <input class="form-control me-2 input-search" type="search" placeholder="輸入關鍵字以搜尋" aria-label="Search" />
+            <button class="btn btn-search text-nowrap" type="submit">
+              <SearchIcon /> 搜尋
+            </button>
           </form>
         </div>
       </div>
@@ -141,6 +106,7 @@ nav {
   li {
     &.nav-item {
       cursor: pointer;
+
       &:hover,
       &:focus,
       &:active {
@@ -155,14 +121,16 @@ nav {
         color: var(--color-white-soft);
         font-weight: bold;
       }
+
       &.dropdown-item {
         &:hover {
           color: var(--color-white);
           background-color: var(--color-navbar-soft);
         }
       }
+
       &.underline {
-      position: relative;
+        position: relative;
 
         &:after {
           transition: all .3s;
@@ -188,9 +156,11 @@ nav {
   font-weight: bold;
   background-color: rgb(33, 155, 166);
   border: none;
+
   &:hover {
     background-color: rgb(44, 174, 186);
   }
+
   &:focus {
     color: var(--color-white-soft);
     background-color: rgb(39, 148, 158);
@@ -210,7 +180,7 @@ nav {
       pointer-events: none;
     }
   }
-  
+
   .dropdown {
     &:hover {
       .dropdown-menu {
@@ -218,10 +188,11 @@ nav {
         margin-top: 1px;
         margin-left: -2rem;
         padding: 0.2rem 0;
-        border-radius: 0;
+        // border-radius: 0;
         border: 0;
         box-shadow: 4px 4px 8px var(--color-shadow);
       }
+
       .underline {
         &:after {
           width: 100%;
@@ -235,6 +206,7 @@ nav {
   form {
     margin-bottom: .3rem;
   }
+
   .dropdown-menu {
     margin-right: -0.5rem;
     // border-radius: 0;

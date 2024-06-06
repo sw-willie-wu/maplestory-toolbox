@@ -1,6 +1,4 @@
 import { createRouter, createWebHistory } from 'vue-router'
-import HomeView from '../views/HomeView.vue'
-import RuneForceView from '@/views/ToolView/RuneForceView.vue'
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -9,14 +7,14 @@ const router = createRouter({
       path: '/',
       name: 'Home',
       meta: { title: '首頁' },
-      component: HomeView
+      component: () => import('@/views/HomeView.vue')
     },
     {
       path: '/tools/rune-force-calculator',
       name: 'RuneForce',
       meta: { title: '符文力量計算機' },
-      component: RuneForceView
-    },
+      component: () => import('@/views/ToolView/RuneForceView.vue')
+    }
   ]
 })
 
