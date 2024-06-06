@@ -7,7 +7,7 @@ import CaretDownIcon from './icons/IconCaretDown.vue'
   <div>
     <nav class="navbar navbar-expand-lg fixed-top navbar-dark">
       <div class="container-lg">
-        <a class="navbar-brand" href="/"><img class="icon-brand" src="@/assets/img/brand.png" /></a>
+        <router-link to="/" class="navbar-brand"><img class="icon-brand" src="@/assets/img/brand.png" /></router-link>
         <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarSupportedContent"
           aria-controls="navbarSupportedContent" aria-expanded="false" aria-label="Toggle navigation">
           <span class="navbar-toggler-icon"></span>
@@ -22,10 +22,10 @@ import CaretDownIcon from './icons/IconCaretDown.vue'
               </a>
               <ul class="dropdown-menu" aria-labelledby="navbarDropdown">
                 <li>
-                  <a class="dropdown-item" href="/tools/rune-force-calculator">符文力量計算機</a>
+                  <router-link to="/tools/rune-force-calculator" class="dropdown-item">符文力量計算機</router-link>
                 </li>
-                <li><a class="dropdown-item" href="#">裝備強化計算機</a></li>
-                <li><a class="dropdown-item" href="#">六轉矩陣計算機</a></li>
+                <li><router-link class="dropdown-item" to="#">裝備強化計算機</router-link></li>
+                <li><router-link class="dropdown-item" to="#">六轉矩陣計算機</router-link></li>
               </ul>
             </li>
             <li class="nav-item dropdown me-2">
@@ -35,16 +35,16 @@ import CaretDownIcon from './icons/IconCaretDown.vue'
                 <CaretDownIcon />
               </a>
               <ul class="dropdown-menu" aria-labelledby="navbarDropdown">
-                <li><a class="dropdown-item" href="#">黃金蘋果</a></li>
-                <li><a class="dropdown-item" href="#">皇家美容院</a></li>
-                <li><a class="dropdown-item" href="#">時尚隨機箱</a></li>
-                <li><a class="dropdown-item" href="#">萌獸卡牌包</a></li>
-                <li><a class="dropdown-item" href="#">寵物隨機箱</a></li>
+                <li><router-link class="dropdown-item" to="#">黃金蘋果</router-link></li>
+                <li><router-link class="dropdown-item" to="#">皇家美容院</router-link></li>
+                <li><router-link class="dropdown-item" to="#">時尚隨機箱</router-link></li>
+                <li><router-link class="dropdown-item" to="#">萌獸卡牌包</router-link></li>
+                <li><router-link class="dropdown-item" to="#">寵物隨機箱</router-link></li>
                 <li>
                   <hr class="dropdown-divider" />
                 </li>
                 <li>
-                  <a class="dropdown-item" href="#">當期活動</a>
+                  <router-link class="dropdown-item" to="#">當期活動</router-link>
                 </li>
               </ul>
             </li>
