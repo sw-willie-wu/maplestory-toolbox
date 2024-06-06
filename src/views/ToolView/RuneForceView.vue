@@ -83,7 +83,7 @@ const autMoneyNeed = computed(() => moneyFormatter(runeMoneyNeed(aut)))
       <div v-for="area in isARC ? arc : aut" class="col-12 col-md-6 col-xl-4">
         <div class="card">
           <div class="card-content">
-            <img :src="`/src/assets/img/icon/${area.id}.png`" class="icon">
+            <img :src="`https://maplestory-toolbox-api.vercel.app/icon/${area.id}`" class="icon">
             <b>{{ area.name }}</b>
             <hr>
             <div class="row align-items-center g-0">
