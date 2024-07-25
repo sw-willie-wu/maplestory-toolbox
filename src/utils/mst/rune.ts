@@ -103,12 +103,6 @@ export class Rune {
         return this.totalDailyGain * 7 + this.partyGain
     }
   
-//     get totalDailyObtain() {
-//       const p = this.isParty ? (this.partyGain / this.exchangeRatio) / 7 : 0
-//       const b = this.isDaily && this.isBonus ? this.bonusGain : 0
-//       return this.dailyGain + p + b
-//     }
-  
     get forceValue() {
         return this.calculateForceValue(this.level)
     }
@@ -141,6 +135,4 @@ export class Rune {
       return this.calculateDayNeed(this.level, this.maxLevel, this.stack)
     }
   }
-  
-//   export { Rune }
   

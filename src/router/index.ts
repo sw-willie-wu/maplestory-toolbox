@@ -14,6 +14,12 @@ const router = createRouter({
       name: 'RuneForce',
       meta: { title: '符文力量計算機' },
       component: () => import('@/views/ToolView/RuneForceView.vue')
+    },
+    {
+      path: '/tools/hexa-matrix-calculator',
+      name: 'HexaMatrix',
+      meta: { title: '六轉矩陣計算機' },
+      component: () => import('@/views/ToolView/HexaMatrixView.vue')
     }
   ]
 })

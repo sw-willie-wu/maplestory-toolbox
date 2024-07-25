@@ -42,7 +42,7 @@ const runePowerAdd = (rune: object, job: string) => {
   } else { 0 }
   return powerAdd
 }
-const runeDayNeed = (rune: object) => Object.values(rune).map(x => x.dayNeed)
+const runeDayNeed = (rune: object) => Math.max(...Object.values(rune).map(x => x.dayNeed))
 const dayFormatter = (day: number) => day === Infinity ? '不做每日還想逃課阿' : `${day}天`
 const runeMoneyNeed = (rune: object) => Object.values(rune).reduce((a, b) => { return a + b.moneyNeed }, 0)
 const moneyFormatter = (money: number) => {
@@ -66,6 +66,7 @@ const autMaxLevel = computed(() => runeLevelMax(aut) + eventRuneLevelAdd.value)
 const autCurrentAdd = computed(() => runePowerAdd(aut, job.value))
 const autMoneyNeed = computed(() => moneyFormatter(runeMoneyNeed(aut)))
 
+
 </script>
 
 <template>
@@ -79,7 +80,7 @@ const autMoneyNeed = computed(() => moneyFormatter(runeMoneyNeed(aut)))
       </li>
     </ul>
     <div class="row g-2">
-      <div class="col-12 gy-3"></div>
+      <div class="col-12 gy-4"></div>
       <div v-for="area in isARC ? arc : aut" class="col-12 col-md-6 col-xl-4">
         <div class="card">
           <div class="card-content">
@@ -197,8 +198,8 @@ const autMoneyNeed = computed(() => moneyFormatter(runeMoneyNeed(aut)))
                 <span>全部升滿所需時間：</span>
               </div>
               <div class="col-12 text-center">
-                <span class="enhance-text">{{ isARC ? dayFormatter(Math.max(...runeDayNeed(arc))) :
-                  dayFormatter(Math.max(...runeDayNeed(aut))) }}</span>
+                <span class="enhance-text">{{ isARC ? dayFormatter(runeDayNeed(arc)) : dayFormatter(runeDayNeed(aut))
+                  }}</span>
               </div>
             </div>
           </div>
@@ -286,7 +287,8 @@ const autMoneyNeed = computed(() => moneyFormatter(runeMoneyNeed(aut)))
 
 <style lang="scss" scoped>
 .nav-tabs {
-  border-bottom: 2px solid var(--color-shadow);
+  border-color: var(--color-navbar);
+  // border-bottom: 2px solid var(--color-shadow);
   padding-left: 1rem;
 
   .nav-link {
@@ -298,42 +300,43 @@ const autMoneyNeed = computed(() => moneyFormatter(runeMoneyNeed(aut)))
     }
 
     &.active {
+      border-color: var(--color-navbar);
       background-color: var(--color-background);
-      border: 2px solid var(--color-shadow);
+      // border: 2px solid var(--color-shadow);
       margin-bottom: -2px;
       border-bottom: 1px solid var(--color-background);
     }
   }
 }
 
-.card {
-  //box-shadow: 2px 2px 8px 0 var(--color-shadow);
-  background-color: var(--color-card);
-  border: 0;
+// .card {
+//   //box-shadow: 2px 2px 8px 0 var(--color-shadow);
+//   background-color: var(--color-card);
+//   border: 0;
 
-  .card-content {
-    padding: 1rem;
+//   .card-content {
+//     padding: 1rem;
 
-    .input-sm {
-      width: 5rem;
-      margin-left: -2rem;
-    }
+//     .input-sm {
+//       width: 5rem;
+//       margin-left: -2rem;
+//     }
 
-    .icon {
-      height: 2rem;
-      padding-right: .5rem;
-      margin-top: -5px;
-    }
+//     .icon {
+//       height: 2rem;
+//       padding-right: .5rem;
+//       margin-top: -5px;
+//     }
 
-    .label-text {
-      padding-left: .5rem;
-    }
+//     .label-text {
+//       padding-left: .5rem;
+//     }
 
-    hr {
-      margin: .5rem 0;
-    }
-  }
-}
+//     hr {
+//       margin: .5rem 0;
+//     }
+//   }
+// }
 
 .hint-text {
   color: var(--color-navbar-soft);
