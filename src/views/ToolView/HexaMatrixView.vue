@@ -24,11 +24,11 @@ const coreHoverStatus = reactive(
     left: 15,
     border: false,
     panel: false,
-    current: NaN
+    current: reactive<{ lv: number, img: string, locked: boolean }>({ lv: 0, img: '', locked: true })
   }
 )
 
-const corePower = reactive(
+const corePower: Record<string, any> = reactive(
   {
     skill: {
       0: { lv: 1, img: imgCoreSkill, locked: false },
@@ -69,45 +69,32 @@ const hoverCore = (event: any) => {
       core = event.target.parentElement.classList[1]
     }
     core = core.split('-')
-    coreHoverStatus.current = corePower[core[0]][core[1]]
+    let coreType: string = core[0]
+    coreHoverStatus.current = corePower[coreType][core[1]]
     coreHoverStatus.panel = !coreHoverStatus.current.locked
   } else {
     coreHoverStatus.border = false
   }
 }
 
-const currentSkillFragment = computed(() => Object.values(corePower.skill)
+const currentFragment = (core: object, data: HexaCore) => Object.values(core)
   .filter(x => x.locked === false)
-  .reduce((a, b) => { return a + skillCore.calculateTotalStack(b.lv) }, 0)
-)
+  .reduce((a, b) => { return a + data.calculateTotalStack(b.lv) }, 0)
 
-const totalSkillFragment = computed(() => Object.values(corePower.skill)
+const totalFragment = (core: object, data: HexaCore) => Object.values(core)
   .filter(x => x.locked === false)
-  .reduce((a, b) => { return a + skillCore.calculateTotalStack(30) }, 0)
-)
+  .reduce((a, b) => { return a + data.calculateTotalStack(30) }, 0)
 
-const currentMasteryFragment = computed(() => Object.values(corePower.mastery)
-  .filter(x => x.locked === false)
-  .reduce((a, b) => { return a + masteryCore.calculateTotalStack(b.lv) }, 0)
-)
+const currentSkillFragment = computed(() => currentFragment(corePower.skill, skillCore))
+const currentMasteryFragment = computed(() => currentFragment(corePower.mastery, masteryCore))
+const currentEnforceFragment = computed(() => currentFragment(corePower.enforce, enforceCore))
+const totalSkillFragment = computed(() => totalFragment(corePower.skill, skillCore))
+const totalMasteryFragment = computed(() => totalFragment(corePower.mastery, masteryCore))
+const totalEnforceFragment = computed(() => totalFragment(corePower.enforce, enforceCore))
 
-const totalMasteryFragment = computed(() => Object.values(corePower.mastery)
-  .filter(x => x.locked === false)
-  .reduce((a, b) => { return a + masteryCore.calculateTotalStack(30) }, 0)
-)
 
-const currentEnforceFragment = computed(() => Object.values(corePower.enforce)
-  .filter(x => x.locked === false)
-  .reduce((a, b) => { return a + enforceCore.calculateTotalStack(b.lv) }, 0)
-)
-
-const totalEnforceFragment = computed(() => Object.values(corePower.enforce)
-  .filter(x => x.locked === false)
-  .reduce((a, b) => { return a + enforceCore.calculateTotalStack(30) }, 0)
-)
-
-const currentFragment = computed(() => currentSkillFragment.value + currentMasteryFragment.value + currentEnforceFragment.value)
-const totalFragment = computed(() => totalSkillFragment.value + totalMasteryFragment.value + totalEnforceFragment.value)
+const currentStackFragment = computed(() => currentSkillFragment.value + currentMasteryFragment.value + currentEnforceFragment.value)
+const totalNeedFragment = computed(() => totalSkillFragment.value + totalMasteryFragment.value + totalEnforceFragment.value)
 </script>
 
 <template>
@@ -146,11 +133,11 @@ const totalFragment = computed(() => totalSkillFragment.value + totalMasteryFrag
                 currentEnforceFragment }} /
               {{
                 totalEnforceFragment }} )<br><br>
-              總計：{{ (currentFragment / totalFragment *
+              總計：{{ (currentStackFragment / totalNeedFragment *
                 100).toFixed(2) }} %&nbsp;&nbsp;&nbsp;( {{
-                currentFragment }} /
+                currentStackFragment }} /
               {{
-                totalFragment }} )<br><br>
+                totalNeedFragment }} )<br><br>
             </div>
           </div>
         </div>
