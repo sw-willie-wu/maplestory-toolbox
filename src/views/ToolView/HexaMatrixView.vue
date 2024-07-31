@@ -10,6 +10,7 @@ import imgCoreSkillLock from '@/assets/img/hexa/skill-lock.png'
 import imgCoreMastery from '@/assets/img/hexa/mastery.png'
 import imgCoreMasteryLock from '@/assets/img/hexa/mastery-lock.png'
 import imgCoreEnforce from '@/assets/img/hexa/enforce.png'
+import imgCoreCommon from '@/assets/img/hexa/common.png'
 import imgCoreCommonLock from '@/assets/img/hexa/common-lock.png'
 import imgCoreSelect from '@/assets/img/hexa/core-select.png'
 
@@ -17,6 +18,7 @@ import imgCoreSelect from '@/assets/img/hexa/core-select.png'
 const skillCore = new HexaCore(hexaData.skillNeed)
 const masteryCore = new HexaCore(hexaData.masteryNeed)
 const enforceCore = new HexaCore(hexaData.enforceNeed)
+const commonCore = new HexaCore(hexaData.commonNeed)
 
 const coreHoverStatus = reactive(
   {
@@ -40,7 +42,7 @@ const corePower: Record<string, any> = reactive(
     },
     mastery: {
       0: { lv: 0, img: imgCoreMastery, locked: false },
-      1: { lv: 0, img: imgCoreMasteryLock, locked: true },
+      1: { lv: 0, img: imgCoreMastery, locked: false },
       2: { lv: 0, img: imgCoreMasteryLock, locked: true },
       3: { lv: 0, img: imgCoreMasteryLock, locked: true },
     },
@@ -51,7 +53,7 @@ const corePower: Record<string, any> = reactive(
       3: { lv: 0, img: imgCoreEnforce, locked: false },
     },
     common: {
-      0: { lv: 0, img: imgCoreCommonLock, locked: true },
+      0: { lv: 0, img: imgCoreCommon, locked: false },
       1: { lv: 0, img: imgCoreCommonLock, locked: true },
       2: { lv: 0, img: imgCoreCommonLock, locked: true },
       3: { lv: 0, img: imgCoreCommonLock, locked: true },
@@ -88,13 +90,15 @@ const totalFragment = (core: object, data: HexaCore) => Object.values(core)
 const currentSkillFragment = computed(() => currentFragment(corePower.skill, skillCore))
 const currentMasteryFragment = computed(() => currentFragment(corePower.mastery, masteryCore))
 const currentEnforceFragment = computed(() => currentFragment(corePower.enforce, enforceCore))
+const currentCommonFragment = computed(() => currentFragment(corePower.common, commonCore))
 const totalSkillFragment = computed(() => totalFragment(corePower.skill, skillCore))
 const totalMasteryFragment = computed(() => totalFragment(corePower.mastery, masteryCore))
 const totalEnforceFragment = computed(() => totalFragment(corePower.enforce, enforceCore))
+const totalCommonFragment = computed(() => totalFragment(corePower.common, commonCore))
 
 
-const currentStackFragment = computed(() => currentSkillFragment.value + currentMasteryFragment.value + currentEnforceFragment.value)
-const totalNeedFragment = computed(() => totalSkillFragment.value + totalMasteryFragment.value + totalEnforceFragment.value)
+const currentStackFragment = computed(() => currentSkillFragment.value + currentMasteryFragment.value + currentEnforceFragment.value + currentCommonFragment.value)
+const totalNeedFragment = computed(() => totalSkillFragment.value + totalMasteryFragment.value + totalEnforceFragment.value + totalCommonFragment.value)
 </script>
 
 <template>
@@ -133,6 +137,10 @@ const totalNeedFragment = computed(() => totalSkillFragment.value + totalMastery
                 currentEnforceFragment }} /
               {{
                 totalEnforceFragment }} )<br><br>
+              共用核心：{{ (currentCommonFragment / totalCommonFragment * 100).toFixed(2) }} %&nbsp;&nbsp;&nbsp;( {{
+                currentCommonFragment }} /
+              {{
+                totalCommonFragment }} )<br><br>
               總計：{{ (currentStackFragment / totalNeedFragment *
                 100).toFixed(2) }} %&nbsp;&nbsp;&nbsp;( {{
                 currentStackFragment }} /
