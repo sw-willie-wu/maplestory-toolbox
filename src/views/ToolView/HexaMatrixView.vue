@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { reactive, computed } from 'vue'
+import { reactive, computed, onMounted } from 'vue'
 import { HexaCore } from '@/utils/mst/hexa_core'
 import hexaData from '@/assets/data/hexa.json'
 import imgHexaBg from '@/assets/img/hexa/bg.png'
@@ -26,6 +26,7 @@ const coreHoverStatus = reactive(
     left: 15,
     border: false,
     panel: false,
+    name: '',
     current: reactive<{ lv: number, img: string, locked: boolean }>({ lv: 0, img: '', locked: true })
   }
 )
@@ -33,7 +34,7 @@ const coreHoverStatus = reactive(
 const corePower: Record<string, any> = reactive(
   {
     skill: {
-      0: { lv: 1, img: imgCoreSkill, locked: false },
+      0: { lv: 0, img: imgCoreSkill, locked: false },
       1: { lv: 0, img: imgCoreSkillLock, locked: true },
       2: { lv: 0, img: imgCoreSkillLock, locked: true },
       3: { lv: 0, img: imgCoreSkillLock, locked: true },
@@ -61,6 +62,44 @@ const corePower: Record<string, any> = reactive(
   }
 )
 
+onMounted(() => {
+  Object.entries(corePower).forEach(([coreName, coreDatas]: [string, any]) => {
+    Object.entries(coreDatas).forEach(([coreId, coreData]: [string, any]) => {
+      let tmpName = `${coreName}-${coreId}`
+      if (localStorage.getItem(tmpName) === null) {
+        localStorage.setItem(tmpName, `${coreData.lv}`)
+      } else {
+        coreData.lv = Number(localStorage.getItem(tmpName))
+      }
+    })
+  })
+})
+
+const changeCoreValue = (coreName: string, diff: number) => {
+  coreHoverStatus.current.lv = coreHoverStatus.current.lv + diff
+  localStorage.setItem(coreName, `${coreHoverStatus.current.lv}`)
+}
+
+const resetAll = () => {
+  Object.entries(corePower).forEach(([coreName, coreDatas]: [string, any]) => {
+    Object.entries(coreDatas).forEach(([coreId, coreData]: [string, any]) => {
+      let tmpName = `${coreName}-${coreId}`
+      coreData.lv = 0
+      localStorage.setItem(tmpName, `0`)
+    })
+  })
+}
+
+const finishAll = () => {
+  Object.entries(corePower).forEach(([coreName, coreDatas]: [string, any]) => {
+    Object.entries(coreDatas).forEach(([coreId, coreData]: [string, any]) => {
+      let tmpName = `${coreName}-${coreId}`
+      coreData.lv = 30
+      localStorage.setItem(tmpName, `30`)
+    })
+  })
+}
+
 const hoverCore = (event: any) => {
   if (event.target.classList.contains('core')) {
     coreHoverStatus.top = event.target.getBoundingClientRect().top
@@ -70,6 +109,7 @@ const hoverCore = (event: any) => {
     if (core === 'core-level') {
       core = event.target.parentElement.classList[1]
     }
+    coreHoverStatus.name = core
     core = core.split('-')
     let coreType: string = core[0]
     coreHoverStatus.current = corePower[coreType][core[1]]
@@ -104,7 +144,7 @@ const totalNeedFragment = computed(() => totalSkillFragment.value + totalMastery
 <template>
   <div>
     <div class="row g-2 align-items-center justify-content-center custom-container">
-      <div class="col-12 col-md-6">
+      <div class="col-12 col-xl-6">
         <div class="matrix-canvas" @mouseover="hoverCore">
           <img :src="imgHexaBg" class="matrix-bg" />
           <img :src="imgHexaLayer" class="matrix-lyr" />
@@ -118,36 +158,44 @@ const totalNeedFragment = computed(() => totalSkillFragment.value + totalMastery
           </div>
         </div>
       </div>
-      <div class="col-12 col-md-5">
+      <div class="col-12 col-xl-4">
         <div class="row gx-0 gy-4">
           <div class="card">
             <div class="card-content">
-              核心完成進度 (依碎片需求量計算)
+              <b>核心完成進度 (依碎片需求量計算)</b>
               <hr>
-              <br>
-              起源核心：{{ (currentSkillFragment / totalSkillFragment * 100).toFixed(2) }} %&nbsp;&nbsp;&nbsp;( {{
-                currentSkillFragment }} /
-              {{
-                totalSkillFragment }} )<br><br>
-              精通核心：{{ (currentMasteryFragment / totalMasteryFragment * 100).toFixed(2) }} %&nbsp;&nbsp;&nbsp;( {{
-                currentMasteryFragment }} /
-              {{
-                totalMasteryFragment }} )<br><br>
-              強化核心：{{ (currentEnforceFragment / totalEnforceFragment * 100).toFixed(2) }} %&nbsp;&nbsp;&nbsp;( {{
-                currentEnforceFragment }} /
-              {{
-                totalEnforceFragment }} )<br><br>
-              共用核心：{{ (currentCommonFragment / totalCommonFragment * 100).toFixed(2) }} %&nbsp;&nbsp;&nbsp;( {{
-                currentCommonFragment }} /
-              {{
-                totalCommonFragment }} )<br><br>
-              總計：{{ (currentStackFragment / totalNeedFragment *
+              <div class="card-content">
+                起源核心：{{ (currentSkillFragment / totalSkillFragment * 100).toFixed(2) }} %&nbsp;&nbsp;&nbsp;( {{
+                  currentSkillFragment }} /
+                {{
+                  totalSkillFragment }} )<br><br>
+                精通核心：{{ (currentMasteryFragment / totalMasteryFragment * 100).toFixed(2) }} %&nbsp;&nbsp;&nbsp;( {{
+                  currentMasteryFragment }} /
+                {{
+                  totalMasteryFragment }} )<br><br>
+                強化核心：{{ (currentEnforceFragment / totalEnforceFragment * 100).toFixed(2) }} %&nbsp;&nbsp;&nbsp;( {{
+                  currentEnforceFragment }} /
+                {{
+                  totalEnforceFragment }} )<br><br>
+                共用核心：{{ (currentCommonFragment / totalCommonFragment * 100).toFixed(2) }} %&nbsp;&nbsp;&nbsp;( {{
+                  currentCommonFragment }} /
+                {{
+                  totalCommonFragment }} )<br>
+              </div>
+              <hr>
+              <b>總計：{{ (currentStackFragment / totalNeedFragment *
                 100).toFixed(2) }} %&nbsp;&nbsp;&nbsp;( {{
-                currentStackFragment }} /
-              {{
-                totalNeedFragment }} )<br><br>
+                  currentStackFragment }} /
+                {{
+                  totalNeedFragment }} )</b>
             </div>
           </div>
+        </div>
+        <br><br>
+        <div class="row gx-3">
+          <div class="col-1"></div>
+          <button class="btn btn-secondary col-5 me-1" @click="resetAll">全部重置</button>
+          <button class="btn btn-secondary col-5" @click="finishAll">全部完成</button>
         </div>
       </div>
     </div>
@@ -156,8 +204,8 @@ const totalNeedFragment = computed(() => totalSkillFragment.value + totalMastery
     <div v-if="coreHoverStatus.panel" class="core-level-panel"
       :style="{ top: `${coreHoverStatus.top}px`, left: `${coreHoverStatus.left}px` }"
       @mouseleave="coreHoverStatus.panel = false">
-      <button :disabled="coreHoverStatus.current.lv <= 0" @click="coreHoverStatus.current.lv--">−</button>
-      <button :disabled="coreHoverStatus.current.lv >= 30" @click="coreHoverStatus.current.lv++">+</button>
+      <button :disabled="coreHoverStatus.current.lv <= 0" @click="changeCoreValue(coreHoverStatus.name, -1)">−</button>
+      <button :disabled="coreHoverStatus.current.lv >= 30" @click="changeCoreValue(coreHoverStatus.name, 1)">+</button>
     </div>
   </div>
 </template>
