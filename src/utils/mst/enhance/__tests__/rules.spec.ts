@@ -74,7 +74,8 @@ describe('rules', () => {
     let def = hat.base.def!
     let att = 0
     for (let s = 1; s <= 25; s++) {
-      for (const k of STARFORCE.statTable.statKeys(s, hat.jobs, false))
+      // afterScroll: base + the fixture's B-scroll all-stat 34, so STR/INT also get 16–22★
+      for (const k of STARFORCE.statTable.statKeys(s, hat.jobs, { ...hat.base, str: 34, int: 34 }))
         gained[k] = (gained[k] ?? 0) + STARFORCE.statTable.perStar(hat.level, s)
       hp += STARFORCE.statTable.hpPerStar(s)
       def = STARFORCE.statTable.nextDef(def)

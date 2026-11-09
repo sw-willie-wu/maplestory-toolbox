@@ -1,6 +1,6 @@
 // 星力強化 (Star Force), normal (non-superior) equipment, TMS V272 "NEXT" rules (30★, no star drops).
 // Sources: research/starforce.md → sources.md "STARFORCE". Superior items are not modelled (supports() → false).
-import type { EquipData, JobGroup, Sourced, StatKey } from '../types'
+import type { EquipData, JobGroup, Sourced, StatKey, Stats } from '../types'
 
 export interface StarforceRate {
   /** Current star; the attempt goes star → star + 1. */
@@ -39,17 +39,30 @@ export interface StarforceStatTable {
   perStar(level: number, star: number): number
   /**
    * Which main stats get that gain. 1–15★: the job's stats ('all' jobs → all four).
-   * 16–22★: non-weapons all four (fixture 永恆盜賊頭巾 STR/INT 119), weapons job stats only (命運鬥拳 STR/INT 0).
+   * 16–22★: the job's stats plus every main stat the item already has after scrolls (`afterScroll` > 0;
+   * flame stats do not count). Fixture: identical 永恆 items differ only by scroll (STR/INT 119 iff scrolled STR/INT).
    */
-  statKeys(star: number, jobs: JobGroup[] | 'all', weaponTable: boolean): StatKey[]
-  /** Max HP gained by reaching `star` (1–15★; 3★ = +5 per fixture). Not for gloves, shoes, face/eye accessories (W2). Weapons also add the same MP. */
+  statKeys(star: number, jobs: JobGroup[] | 'all', afterScroll: Stats): StatKey[]
+  /** Max HP gained by reaching `star` (1–15★; 3★ = +5 per fixture). Not for `noHpSlots`. Weapon-table items also add the same MP. */
   hpPerStar(star: number): number
-  /** Speed & jump gained by reaching `star` on shoes (1–15★). null = unsourced (11★ disputed). */
-  shoeSpeedJumpPerStar(star: number): number | null
+  /** Slots without star force Max HP: gloves, shoes, face/eye accessories (W2) + earrings, hearts, badges (fixture). */
+  noHpSlots: readonly string[]
+  /**
+   * Slots without star force DEF: hearts, badges (fixture). Weapon-table items get no DEF either.
+   * Hearts: only verified for 0-DEF hearts; hearts with base DEF > 0 are unverified (sources.md).
+   */
+  noDefSlots: readonly string[]
+  /** Speed & jump gained by reaching `star` on shoes (1–15★). */
+  shoeSpeedJumpPerStar(star: number): number
   /** Gloves ATT (or MATT, whichever the gloves have) gained by reaching `star` (1–15★). */
   gloveAttPerStar(star: number): number
   /** DEF after reaching the next star: def + floor(def × 0.05) + 1 (compounding, all stars). */
   nextDef(def: number): number
+  /**
+   * DEF the compounding starts from: items with 0 DEF after scrolls behave as if starting from 1
+   * (fixture rings with 0 DEF: 8★ +9, 15★ +16, 25★ +32); the gain is still measured from the real DEF.
+   */
+  defSeed(def: number): number
 }
 
 export interface StarforceAttTable {
@@ -114,7 +127,8 @@ const WEAPON_ATT: Band[] = [
 ]
 
 const HP_1_15 = [5, 5, 5, 10, 10, 15, 15, 20, 20, 25, 25, 25, 25, 25, 25]
-const SHOE_1_15: (number | null)[] = [0, 0, 1, 1, 1, 1, 1, 1, 1, 1, null, 2, 2, 2, 2]
+// 11★ = 2: W2's per-star and cumulative tables disagree; every fixture shoe ≥15★ totals 18 → 11★ must be 2.
+const SHOE_1_15 = [0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2]
 const GLOVE_1_15 = [0, 0, 0, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 1, 1]
 
 /** Current star → divisor for S ≥ 10 (TMS, reverse-engineered from the official V272 cost table, exact for all cells). */
@@ -140,6 +154,7 @@ export type StarforceRuleKey =
   | 'vipDiscounts'
   | 'statTable'
   | 'attTable'
+  | 'usesWeaponTable'
 
 export interface StarforceRules extends Sourced {
   /** false for superior equipment (different, unsourced rules) and equipment that cannot be star-forced. */
@@ -152,7 +167,13 @@ export interface StarforceRules extends Sourced {
   costFormula(level: number, star: number): number
   statTable: StarforceStatTable
   attTable: StarforceAttTable
-  /** true when the weapon ATT tables apply; Weapon-category secondaries (slot Si, e.g. 172xxxx 阿斯特拉) use the non-weapon table. */
+  /**
+   * true when the weapon tables apply (ATT/MATT compounding 1–15★, weapon 16★+ ATT, MP, no DEF):
+   * weapons outside slot Si, plus the 1354xxx secondaries (fixture 阿斯特拉靈符 1354312 MATT 399 = weapon table;
+   * the rest of 135xxxx has no sample, so it stays on the non-weapon table).
+   * Other secondaries (shields, 172xxxx 阿斯特拉 bracelets etc.) use the non-weapon table;
+   * 1342xxx katara is UNVERIFIED (no fixture sample) — see ruleSources.usesWeaponTable.
+   */
   usesWeaponTable(equip: EquipData): boolean
   /** Star the item continues from after being destroyed (trace restored with one identical item). */
   destroyReturnStar(star: number): number
@@ -206,16 +227,19 @@ export const STARFORCE: StarforceRules = {
       if (star <= 22) return STAT_16.find(([min]) => level >= min)?.[1] ?? 0
       return 0
     },
-    statKeys(star, jobs, weaponTable) {
+    statKeys(star, jobs, afterScroll) {
       const job = jobs === 'all' ? MAIN : [...new Set(jobs.flatMap((j) => JOB_STATS[j]))]
       if (star <= 15) return job
-      if (star <= 22) return weaponTable ? job : MAIN
+      if (star <= 22) return MAIN.filter((k) => job.includes(k) || (afterScroll[k] ?? 0) > 0)
       return []
     },
     hpPerStar: (star) => HP_1_15[star - 1] ?? 0,
-    shoeSpeedJumpPerStar: (star) => (star >= 1 && star <= 15 ? SHOE_1_15[star - 1] : 0),
+    noHpSlots: ['Gv', 'So', 'Af', 'Ay', 'Ae', 'Tm', 'Ba'],
+    noDefSlots: ['Tm', 'Ba'],
+    shoeSpeedJumpPerStar: (star) => SHOE_1_15[star - 1] ?? 0,
     gloveAttPerStar: (star) => GLOVE_1_15[star - 1] ?? 0,
     nextDef: (def) => def + Math.floor(def * 0.05) + 1,
+    defSeed: (def) => Math.max(def, 1),
   },
 
   attTable: {
@@ -225,7 +249,8 @@ export const STARFORCE: StarforceRules = {
   },
 
   usesWeaponTable(equip) {
-    return equip.isWeapon && equip.slot !== 'Si'
+    if (equip.slot !== 'Si') return equip.isWeapon
+    return equip.category === 'Weapon' && Math.floor(equip.id / 1000) === 1354
   },
 
   destroyReturnStar() {
@@ -267,6 +292,12 @@ export const STARFORCE: StarforceRules = {
     attTable: {
       source: 'KMS-estimate',
       ref: 'https://maplestorywiki.net/w/Star_Force_Enhancement/Stat_Tables ; MikuTracker starForce.ts (2026-10-24) ; fixture checks in sources.md',
+    },
+    usesWeaponTable: {
+      source: 'KMS-estimate',
+      ref:
+        'fixture (sources.md STARFORCE): weapons / 1354xxx 靈符 → weapon table, shields / 172xxxx → non-weapon table; ' +
+        '1342xxx katara (dual blade) non-weapon table is UNVERIFIED (no fixture sample), as is the rest of 135xxxx',
     },
   },
 }
