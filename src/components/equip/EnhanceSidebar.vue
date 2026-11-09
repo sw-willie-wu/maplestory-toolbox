@@ -4,7 +4,19 @@ import ItemIcon from './ItemIcon.vue'
 import LineIcon from './ui/LineIcon.vue'
 import { PANELS, type PanelId } from './panels'
 
-const props = defineProps<{ equip: EquipData | null; active: PanelId; locked: ReadonlyMap<PanelId, string> }>()
+/**
+ * `part` (default 'all') = the vertical sidebar (≥ 992px). Below 992px the page renders the two halves apart:
+ * 'equip' = only the 目前裝備 cell (own full-width block), 'tabs' = only the 8 panels as a horizontal tab row.
+ */
+const props = withDefaults(
+  defineProps<{
+    equip: EquipData | null
+    active: PanelId
+    locked: ReadonlyMap<PanelId, string>
+    part?: 'all' | 'equip' | 'tabs'
+  }>(),
+  { part: 'all' }
+)
 const emit = defineEmits<{ select: [p: PanelId] }>()
 
 // Locked items use aria-disabled (not `disabled`) so the hover title with the reason still shows.
@@ -14,8 +26,14 @@ function onClick(id: PanelId) {
 </script>
 
 <template>
-  <nav class="eq-side" aria-label="強化選單">
+  <component
+    :is="part === 'equip' ? 'div' : 'nav'"
+    class="eq-side"
+    :class="`eq-side--${part}`"
+    :aria-label="part === 'equip' ? undefined : '強化選單'"
+  >
     <button
+      v-if="part !== 'tabs'"
       type="button"
       class="eq-side__btn eq-side__equip"
       :class="{ on: active === 'picker' }"
@@ -29,22 +47,24 @@ function onClick(id: PanelId) {
         <small>選擇裝備</small>
       </span>
     </button>
-    <div class="eq-side__sep" role="separator"></div>
-    <button
-      v-for="p in PANELS"
-      :key="p.id"
-      type="button"
-      class="eq-side__btn"
-      :class="{ on: active === p.id, off: locked.has(p.id) }"
-      :aria-current="active === p.id ? 'true' : undefined"
-      :aria-disabled="locked.has(p.id) ? 'true' : undefined"
-      :title="locked.get(p.id)"
-      :data-test="`side-${p.id}`"
-      @click="onClick(p.id)"
-    >
-      <LineIcon :name="p.icon" />{{ p.label }}
-    </button>
-  </nav>
+    <div v-if="part === 'all'" class="eq-side__sep" role="separator"></div>
+    <template v-if="part !== 'equip'">
+      <button
+        v-for="p in PANELS"
+        :key="p.id"
+        type="button"
+        class="eq-side__btn"
+        :class="{ on: active === p.id, off: locked.has(p.id) }"
+        :aria-current="active === p.id ? 'true' : undefined"
+        :aria-disabled="locked.has(p.id) ? 'true' : undefined"
+        :title="locked.get(p.id)"
+        :data-test="`side-${p.id}`"
+        @click="onClick(p.id)"
+      >
+        <LineIcon :name="p.icon" />{{ p.label }}
+      </button>
+    </template>
+  </component>
 </template>
 
 <style lang="scss" scoped>
@@ -147,28 +167,28 @@ function onClick(id: PanelId) {
   background: rgba(40, 50, 65, 0.3);
 }
 
-// < 992px: horizontal scrolling menu row
-@media (max-width: 991.98px) {
-  .eq-side {
-    flex-direction: row;
-    overflow-x: auto;
-    padding-bottom: 2px;
-    scrollbar-width: thin;
-  }
+// part="equip" (< 992px): the 目前裝備 cell as its own full-width block
+.eq-side--equip .eq-side__equip {
+  width: 100%;
+}
+
+// part="tabs" (< 992px): horizontal tab row above the editor; never wraps, scrolls inside itself
+.eq-side--tabs {
+  flex-direction: row;
+  gap: 4px;
+  overflow-x: auto;
+  scrollbar-width: thin;
 
   .eq-side__btn {
-    gap: 8px;
-  }
+    gap: 6px;
+    height: 40px;
+    padding: 0 12px;
+    font-size: 14px;
 
-  .eq-side__equip {
-    height: 44px;
-    max-width: 220px;
-  }
-
-  .eq-side__sep {
-    width: 1px;
-    height: auto;
-    margin: 0 2px;
+    :deep(.eq-line-icon) {
+      width: 18px;
+      height: 18px;
+    }
   }
 }
 </style>

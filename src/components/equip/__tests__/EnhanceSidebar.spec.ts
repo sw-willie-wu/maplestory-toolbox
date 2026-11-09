@@ -76,6 +76,33 @@ describe('EnhanceSidebar', () => {
     expect(w.emitted('select')).toBeUndefined()
   })
 
+  it('part="equip" renders only the equip cell and emits picker', async () => {
+    const w = mount(EnhanceSidebar, {
+      props: { equip: ring, active: 'starforce', locked: lockReasons(ring), part: 'equip' }
+    })
+    expect(w.find('[data-test="side-picker"]').text()).toContain('天上的氣息')
+    for (const p of PANELS) expect(w.find(`[data-test="side-${p.id}"]`).exists()).toBe(false)
+    expect(w.find('[role="separator"]').exists()).toBe(false)
+    await w.find('[data-test="side-picker"]').trigger('click')
+    expect(w.emitted('select')).toEqual([['picker']])
+  })
+
+  it('part="tabs" renders the 8 panels as a tab row without the equip cell', async () => {
+    const w = mount(EnhanceSidebar, {
+      props: { equip: ring, active: 'scroll', locked: lockReasons(ring), part: 'tabs' }
+    })
+    expect(w.classes()).toContain('eq-side--tabs')
+    expect(w.find('[data-test="side-picker"]').exists()).toBe(false)
+    expect(w.find('[role="separator"]').exists()).toBe(false)
+    expect(w.findAll('.eq-side__btn').map((b) => b.text())).toEqual(PANELS.map((p) => p.label))
+    expect(w.findAllComponents(LineIcon)).toHaveLength(PANELS.length)
+    expect(w.find('[data-test="side-scroll"]').classes()).toContain('on')
+    expect(w.find('[data-test="side-flame"]').attributes('title')).toBe('此裝備無法使用星火')
+    await w.find('[data-test="side-flame"]').trigger('click')
+    await w.find('[data-test="side-hammer"]').trigger('click')
+    expect(w.emitted('select')).toEqual([['hammer']])
+  })
+
   it('shows 請選擇裝備 in the first cell without an equip', () => {
     const w = mount(EnhanceSidebar, { props: { equip: null, active: 'starforce', locked: lockReasons(null) } })
     expect(w.find('[data-test="side-picker"]').text()).toContain('請選擇裝備')

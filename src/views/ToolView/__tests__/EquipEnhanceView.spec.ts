@@ -302,6 +302,83 @@ describe('EquipEnhanceView layout', () => {
     })
   })
 
+  describe('mobile (< 992px)', () => {
+    /** Every max-width query matches → compact (< 1200) and mobile (< 992) both on. */
+    const mobileMatchMedia = (query: string) =>
+      ({
+        matches: query.includes('max-width'),
+        media: query,
+        addEventListener: () => {},
+        removeEventListener: () => {}
+      }) as unknown as MediaQueryList
+    const before = (a: Element, b: Element) => !!(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING)
+    const IDS = ['starforce', 'scroll', 'hammer', 'flame', 'potential', 'bonusPotential', 'exceptional', 'reverse']
+
+    it('DOM order: equip block, compact C, tab row, editor', async () => {
+      vi.stubGlobal('matchMedia', mobileMatchMedia)
+      const w = await selected(RING)
+      const equipBlock = w.find('[data-test="mobile-equip"]')
+      const tip = w.find('[data-test="tooltip-pin"]')
+      const tabs = w.find('[data-test="enhance-tabs"]')
+      const editor = w.findComponent(EnhanceEditor)
+      expect(equipBlock.exists()).toBe(true)
+      expect(tabs.exists()).toBe(true)
+      expect(tip.classes()).toContain('compact')
+      expect(equipBlock.find('[data-test="side-picker"]').exists()).toBe(true)
+      expect(before(equipBlock.element, tip.element)).toBe(true)
+      expect(before(tip.element, tabs.element)).toBe(true)
+      expect(before(tabs.element, editor.element)).toBe(true)
+      // the vertical sidebar is not rendered; the equip cell is not part of the tab row
+      expect(w.find('[data-test="enhance-left"] > .eq-left__side').exists()).toBe(false)
+      expect(tabs.find('[data-test="side-picker"]').exists()).toBe(false)
+      expect(w.findAll('[data-test="side-picker"]')).toHaveLength(1)
+    })
+
+    it('tab row holds all 8 panels and switches the active panel', async () => {
+      vi.stubGlobal('matchMedia', mobileMatchMedia)
+      const w = await selected(CAP_BOSS)
+      const tabs = w.find('[data-test="enhance-tabs"]')
+      expect(tabs.findAll('.eq-side__btn').map((b) => b.attributes('data-test'))).toEqual(IDS.map((id) => `side-${id}`))
+      expect(side(w, 'starforce').classes()).toContain('on')
+      await choose(w, 'scroll')
+      expect(w.find('[data-test="panel-scroll"]').isVisible()).toBe(true)
+      expect(side(w, 'scroll').classes()).toContain('on')
+      expect(side(w, 'starforce').classes()).not.toContain('on')
+    })
+
+    it('equip block click opens the picker; a tab returns to the editor', async () => {
+      vi.stubGlobal('matchMedia', mobileMatchMedia)
+      const w = await selected(RING)
+      await choose(w, 'picker')
+      expect(w.findComponent(EquipPicker).isVisible()).toBe(true)
+      expect(w.findComponent(EnhanceEditor).isVisible()).toBe(false)
+      expect(side(w, 'picker').classes()).toContain('on')
+      expect(w.find('[data-test="enhance-tabs"]').isVisible()).toBe(true)
+      await choose(w, 'starforce')
+      expect(w.findComponent(EnhanceEditor).isVisible()).toBe(true)
+      expect(w.findComponent(EquipPicker).isVisible()).toBe(false)
+    })
+
+    it('a locked tab is faded with the reason and cannot be opened', async () => {
+      vi.stubGlobal('matchMedia', mobileMatchMedia)
+      const w = await selected(SUPERIOR)
+      const sf = w.find('[data-test="enhance-tabs"] [data-test="side-starforce"]')
+      expect(sf.classes()).toContain('off')
+      expect(sf.attributes('aria-disabled')).toBe('true')
+      expect(sf.attributes('title')).toContain('不支援')
+      await sf.trigger('click')
+      await flushPromises()
+      expect(w.find('[data-test="panel-starforce"]').exists()).toBe(false)
+    })
+
+    it('desktop keeps the vertical sidebar and no mobile blocks', async () => {
+      const w = await selected(RING)
+      expect(w.find('[data-test="mobile-equip"]').exists()).toBe(false)
+      expect(w.find('[data-test="enhance-tabs"]').exists()).toBe(false)
+      expect(w.find('[data-test="enhance-left"] > .eq-left__side').exists()).toBe(true)
+    })
+  })
+
   it('updates the tooltip when the editor changes the star (B follows C)', async () => {
     const w = await selected(RING)
     const statLine = (label: string) =>

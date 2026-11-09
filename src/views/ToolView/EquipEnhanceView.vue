@@ -150,10 +150,32 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
+  <!-- DOM order = < 992px reading order: [equip block] → C → left area ([tab row] → panel).
+       ≥ 1200 places C in the right column explicitly (CSS grid-column/grid-row). -->
   <div class="equip-enhance" :style="outerStyle" data-test="enhance-grid">
-    <!-- left area: sidebar | 8px | middle (stretched: top and bottom edges aligned) -->
+    <!-- < 992: the 目前裝備 cell as its own full-width block -->
+    <EnhanceSidebar v-if="isMobile" part="equip" class="eq-mobile-equip" :equip="equip" :active="active"
+      :locked="locked" data-test="mobile-equip" @select="onSidebarSelect" />
+
+    <!-- C: tooltip (sticky; ≥1200 right column, below that a compact version pinned on top) -->
+    <aside class="eq-tip" :class="{ compact: isCompact, expanded: isCompact && expanded }" :style="pinStyle"
+      data-test="tooltip-pin">
+      <div class="eq-tip__scroll" :style="scrollStyle" data-test="tooltip-scroll">
+        <EquipTooltip v-if="view" :equip="view.equip" :breakdown="view.breakdown" :state="view.state"
+          :summary="view.summary" :locked="view.locked" :set-info="view.setInfo" :spec-job="view.specJob"
+          :tags="view.tags" :compact="isCompact && !expanded" />
+        <!-- temporary placeholder; Task 10 replaces it with <EquipTooltip placeholder> -->
+        <div v-else class="eq-tip__placeholder" data-test="tooltip-placeholder">請選擇裝備</div>
+      </div>
+      <button v-if="isCompact && view" type="button" class="eq-tip__toggle" :aria-expanded="expanded"
+        data-test="tooltip-toggle" @click="expanded = !expanded">
+        {{ expanded ? '收合說明框' : '展開說明框' }}
+      </button>
+    </aside>
+
+    <!-- left area: sidebar | 8px | middle (stretched: top and bottom edges aligned); < 992 middle only -->
     <div class="eq-left" data-test="enhance-left">
-      <EnhanceSidebar class="eq-left__side" :equip="equip" :active="active" :locked="locked"
+      <EnhanceSidebar v-if="!isMobile" class="eq-left__side" :equip="equip" :active="active" :locked="locked"
         @select="onSidebarSelect" />
       <div class="eq-main">
         <div v-if="error" class="eq-alert eq-alert--error" role="alert" data-test="load-error">
@@ -162,6 +184,10 @@ onBeforeUnmount(() => {
         <div v-if="selectError" class="eq-alert eq-alert--warn" role="alert" data-test="select-error">
           {{ selectError }}
         </div>
+
+        <!-- < 992: enhancement tabs as a horizontal row directly above the editor -->
+        <EnhanceSidebar v-if="isMobile" part="tabs" :equip="equip" :active="active" :locked="locked"
+          data-test="enhance-tabs" @select="onSidebarSelect" />
 
         <EquipPicker v-show="active === 'picker'" ref="picker" class="eq-main__card" :data="data"
           :selected-id="equip?.id ?? null" @select="onSelect" />
@@ -179,22 +205,6 @@ onBeforeUnmount(() => {
         </div>
       </div>
     </div>
-
-    <!-- C: tooltip (sticky; ≥1200 right column, below that a compact version pinned on top) -->
-    <aside class="eq-tip" :class="{ compact: isCompact, expanded: isCompact && expanded }" :style="pinStyle"
-      data-test="tooltip-pin">
-      <div class="eq-tip__scroll" :style="scrollStyle" data-test="tooltip-scroll">
-        <EquipTooltip v-if="view" :equip="view.equip" :breakdown="view.breakdown" :state="view.state"
-          :summary="view.summary" :locked="view.locked" :set-info="view.setInfo" :spec-job="view.specJob"
-          :tags="view.tags" :compact="isCompact && !expanded" />
-        <!-- temporary placeholder; Task 10 replaces it with <EquipTooltip placeholder> -->
-        <div v-else class="eq-tip__placeholder" data-test="tooltip-placeholder">請選擇裝備</div>
-      </div>
-      <button v-if="isCompact && view" type="button" class="eq-tip__toggle" :aria-expanded="expanded"
-        data-test="tooltip-toggle" @click="expanded = !expanded">
-        {{ expanded ? '收合說明框' : '展開說明框' }}
-      </button>
-    </aside>
   </div>
 </template>
 
@@ -208,7 +218,10 @@ onBeforeUnmount(() => {
   padding: 20px 0 24px;
 }
 
+// C precedes the left area in the DOM (mobile reading order), so ≥ 1200 places both explicitly
 .eq-left {
+  grid-column: 1;
+  grid-row: 1;
   display: grid;
   grid-template-columns: 190px minmax(0, 1fr);
   column-gap: 8px;
@@ -258,6 +271,8 @@ onBeforeUnmount(() => {
 }
 
 .eq-tip {
+  grid-column: 2;
+  grid-row: 1;
   position: sticky;
   z-index: 5;
   width: 320px;
@@ -297,8 +312,14 @@ onBeforeUnmount(() => {
     row-gap: 12px;
   }
 
+  // single column in DOM order: C (first in the DOM) → left area
+  .eq-left,
   .eq-tip {
-    order: -1;
+    grid-column: auto;
+    grid-row: auto;
+  }
+
+  .eq-tip {
     width: 100%;
 
     :deep(.equip-tooltip) {
@@ -307,7 +328,7 @@ onBeforeUnmount(() => {
   }
 }
 
-// < 992: single column — sidebar (horizontal menu row) → compact C → panel
+// < 992: single column in DOM order — equip block → compact C → tab row → panel (vertical sidebar not rendered)
 @media (max-width: 991.98px) {
   .equip-enhance {
     row-gap: 8px;
@@ -315,19 +336,7 @@ onBeforeUnmount(() => {
   }
 
   .eq-left {
-    display: contents;
-  }
-
-  .eq-left__side {
-    order: 1;
-  }
-
-  .eq-tip {
-    order: 2;
-  }
-
-  .eq-main {
-    order: 3;
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 </style>
