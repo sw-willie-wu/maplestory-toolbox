@@ -1,0 +1,226 @@
+# 強化規則資料來源（TMS v283）
+
+整理日期：2026-11-09。研究筆記原文：`.superpowers/sdd/2026-11-09-equip-enhance-calculator/research/*.md`（不進 git）。
+fixture＝`src/utils/mst/enhance/__tests__/fixtures/nexon-items.json`（Nexon Open API，422 件）；WZ＝`public/data/tms-v283/`。
+規則：TMS 與 KMS 不同時以 TMS 為準；研究筆記與 fixture 衝突時 **fixture 優先**。
+
+## 鐵鎚結論（spec §6.3）：兩種
+
+**模型：兩種鐵鎚。** 黃金鐵鎚（+1 次、最多 1 次、設 `goldenHammer` 旗標、受 WZ `blockGoldHammer` 禁止）＋白金鐵鎚提煉（每次成功 +1 次、最多 5 次）。
+
+fixture 證據（422/422 件，WZ `tuc` 依 index.json → equip/<category>.json 取得）：
+
+| goldenHammer | resilience | su + sua − tuc | 件數 |
+|---|---|---|---|
+| false | 0 | 0 | 230（其中 tuc=0 的 143 件、blockGoldHammer 的 2 件） |
+| true | −1 | +1 | 10 |
+| false | −2 | +2 | 15 |
+| false | −3 | +3 | 38 |
+| false | −4 | +4 | 16 |
+| false | −5 | +5 | 96 |
+| false | +1 | −1 | 8 |
+| false | +2 | −2 | 4 |
+| false | +3 | −3 | 5 |
+
+- `su + sua − tuc == −resilience` 對 422 件全部成立；`resilience` 就是「總卷數相對 tuc 的增減」的負值。例：1005983 永恆盜賊頭巾 tuc 12、17+0、resilience −5。
+- 額外次數最大 +5，對上截圖「提煉 5/5」→ 白金鐵鎚 `max = 5`。
+- `goldenHammer=true` **只**出現在 +1 的 10 件；+2..+5 的 165 件全為 false → 旗標不是提煉次數。
+- 未解的點：沒有任何一件同時有黃金鐵鎚旗標與 +2 以上（樣本中兩者看起來互斥，或黃金鐵鎚已停用只剩舊裝備）；也沒有 +6。所以「黃金 + 提煉 5 = +6」是否可能，fixture 無法證實。
+- resilience 為正（+1..+3，17 件）：總卷數少於 tuc，推測是失敗佔用的格數（可用純白恢復）。**這與 spec §4「`scroll_resilience_count` 不是可恢復次數」相反**；但它是淨值（提煉 − 失敗），同時有提煉與失敗時無法拆開，所以仍不能直接當「可恢復次數」用。已列為 concern。
+- 成功率／花費：黃金鐵鎚 100%、24000 咒文（TMS 玩家整理 S2，非楓幣 → `mesoCost: null`）。白金鐵鎚提煉：**無來源**（只有「機率低、失敗不計次」的描述）→ `successRate: null`、`mesoCost: null`，UI 顯示「規則待查證」。
+- `blockGoldHammer` 是否也禁止提煉：未知，暫定不禁止（`blockedByBlockGoldHammer: false`）。
+- 外部搜尋（maplestorywiki Golden_Hammer 頁、中/韓/英搜尋）沒有找到 TMS「白金鐵鎚 提煉」的官方或攻略資料。
+
+## STARFORCE — 整體 `source: 'TMS'`，個別規則覆寫見 `STARFORCE.ruleSources`
+
+主要來源：
+- S1 新楓之谷《0626(四) 星力系統改編事前說明》https://maplestory.beanfun.com/bulletin?bid=74681（2025-06-26 公告，V272 2025-07-30 實裝）— TMS 官方。
+- S2 【VIP系統】https://maplestory-event.beanfun.com/eventad/eventad?eventadid=12590（V269，2025-04-01 起）— TMS 官方。
+- S3 星期天楓之谷 https://maplestory-event.beanfun.com/eventad/eventad?eventadid=8871（2022）— TMS 官方（舊）。
+- W1 https://maplestorywiki.net/w/Star_Force_Enhancement（含 TMS 機率分頁，2026-09-29 編修）；W2 …/Star_Force_Enhancement/Stat_Tables。
+- K1 orangemushroom KMS 1.2.401（2025-03-20）；G1 masonym.dev starforce.js；G2 MikuTracker starForce.ts（2026-10-24）。
+
+| 規則 | 值 | 來源 | 驗證 |
+|---|---|---|---|
+| 機率 0→1 … 29→30 | 成功/破壞見 `RATE_TABLE`；維持 = 其餘；**下滑 = 0** | **TMS** S1（W1 TMS 分頁一致；我自己抓 W1 原始碼也對過） | 結構測試：0..29、總和 = 1 |
+| 與 KMS 差異 | 18→19 12/8.2、19→20 10/9、21→22 20/11.5、22→23 17.5/12.25、23→25 8.5/18、25→26 8/18 | S1 | — |
+| chanceTime | `null`：V272 起一般裝備不下滑，所以沒有連續下滑必成 | S1 第 3 點 | — |
+| 上限 | 0–94:5、95–107:8、108–117:10、118–127:15、128–137:20、138+:30 | W1（KMS-estimate）；30★ 本身 S1 | — |
+| 費用 | S<10：1000 + L³(S+1)/36；S≥10：1000 + L³(S+1)^2.7 / D；四捨五入到百位、**0.5 進位** | **TMS**：由 S1 官方費用表反推，Lv130/140/150/160/200/250 全格吻合 | `rules.spec.ts` 用 11 個官方格驗證（含 Lv150 2>3 = 282,300 的 x50 進位） |
+| 除數 D | 10–14★：571/314/214/157/107；Lv<140 的 15★+：200；Lv140+ 15–19★：125/120/110/45/30；Lv140–249 20★+：200（21★ 125）；Lv250+ 20★+：150 | TMS（反推） | Lv128–139 邊界只有 Lv130 樣本；Lv≥250 只有 Lv250 樣本 |
+| Lv≤120 | S1：「0~120 級費用與原先相同」= 舊 KMS 公式，與上式在 15★ 以下相同 | S1 + W1 | — |
+| 防爆 | 目前 15–17★（15→16、16→17、17→18），加收 200% **未折扣**基礎費用 | **TMS** S1（範圍延伸到 17→18、+100%→+200%）→ `ruleSources.safeguard`（`source: 'TMS'`）；折扣不影響加收依 W1（KMS-estimate） | — |
+| 星力捕捉 | `multiplier 1.05, alwaysOn: true`：Crown 改版移除，加成永遠併入成功率；破壞等比例縮小 | **KMS-estimate**（W1；TMS CROWN = V280 2026-06-24，無官方文字） | — |
+| 爆裝後 | `destroyReturnStar = 12`（1 件同名裝備復原到 12★，不另收楓幣） | **KMS-estimate**（W1/Crown 新規則；TMS 無官方文字）。「花楓幣+多件裝備復原到破壞前（≤22★）」未建模 | — |
+| 30% 折扣活動 | 基礎費用 ×0.7 | TMS S3 | — |
+| 破壞 −30% 活動 | 目前 ≤21★ 的破壞率 ×0.7，減少部分併入維持 | **KMS-estimate**（K1、W1） | — |
+| 5/10/15 必成 | **不建模**：W1 記載已不再舉辦，新制後 TMS 未見 | — | — |
+| VIP 折扣 | 金牌 3%、鑽石 5%、皇家以上 10%（銀牌無），目前 0–16★ | **TMS** S2「星力強化 1~16 星」；範圍解讀依 W1 MVP「到 16→17」 | — |
+| 網咖折扣 | **不建模**：TMS 找不到任何來源 | — | — |
+| 尊貴裝備 | **不建模**：`supports(equip)` 對 `superior` 回 false。研究筆記的尊貴機率表是憑記憶、未驗證 | — | fixture 沒有尊貴裝備 |
+
+### 能力值（`statTable` / `attTable`，KMS-estimate＋fixture）
+
+| 規則 | 值 | 來源 | fixture 驗證 |
+|---|---|---|---|
+| 屬性/星 | 1–5★ 2、6–15★ 3；16–22★ 依等級 7/9/11/13/15/17；23★+ 0 | W2/G1/G2 | 永恆盜賊頭巾 Lv250 25★：STR/INT 119、DEX/LUK 159；天上的氣息 Lv150 25★：117 |
+| 加在哪 | 1–15★ 職業屬性（共用 → 四屬）；16–22★ 職業屬性 ＋ 基礎＋卷軸後 > 0 的屬性（星火不算）→ `statKeys(star, jobs, afterScroll)`（Task 4 修正，見下方 fixture 驗證結論） | fixture（W2 只說 class-relevant） | 頭巾 25★（B 卷有 STR/INT）STR/INT 119、頭巾 22★（無卷軸 STR/INT）0；命運鬥拳 22★ STR/INT 0 |
+| HP 1–15★ | 5,5,**5**,10,10,15,15,20,20,25×6（3★ = 5，W2 防具表寫 10） | fixture | 頭巾 HP 255（W2 表會得 260） |
+| DEF | 每星 def + floor(def×0.05) + 1，複利，起點 = 基礎 + 卷軸；**起點 0 視為 1**（`defSeed`，增量仍從 0 算）；武器表裝備、機器心臟、胸章不加（**機器心臟只驗證過 0 防的心臟**；匯出資料 51 件可強化心臟中 20 件基礎防 > 0，這些是否加防未驗證，暫一律不加）| fixture（比 W2「+5%」精確） | 頭巾 750 → +1816（線性/無 +1/ceil 都不符）；0 防戒指 8★ +9、15★ +16、25★ +32 |
+| 武器 1–15★ 攻 | att + floor(att×0.02) + 1，複利，起點 = 基礎 + 卷軸 | W2/G1 | 命運鬥拳 189+81 → 1–15★ +102；22★ 合計 225 |
+| 非武器攻 16–30★ | 見 `NON_WEAPON_ATT` | W2 | 頭巾 16–25★ = 195 |
+| 武器攻 16–22★ | 見 `WEAPON_ATT`；17★ 採多數來源的 +1 | W2/G1/G2 | 命運系 22★：鬥拳 225、匕首 277、陰陽扇 309、長杖 310、爪子 257、古代之弓 277 全對 |
+| 武器攻 Lv250 23–25★ | 36 / 37 / 38 | 社群推測（misaomaki），**fixture 證實** | 命運調節器 24★ 362、命運火槍 24★ 328、命運弓箭 25★ 391 |
+| 武器攻 Lv250 26★+、Lv138–199 26★+ | **null（無資料）** | 只有 masonym 推測 | — |
+| 武器攻 Lv200 23–30★ | 34…41 | masonym＋NamuWiki | fixture 無 Lv200 武器 23★+ 樣本 |
+| Weapon 類的副手（slot Si，例 阿斯特拉 172xxxx） | 用**非武器**攻擊表、1–15★ 無攻 → `usesWeaponTable()` | fixture | 阿斯特拉手環 24★ 攻 150 = 12+…+23；阿斯特拉遺跡 19★ 54 |
+| 1354xxx 靈符副手（slot Si，`isWeapon` false） | 用**武器表**（只限 1354xxx；其他 135xxxx 無樣本，維持非武器表、未驗證）（1–15★ 魔攻複利、16★+ 武器攻、加 MP、不加防）→ `usesWeaponTable()` | fixture（Task 4） | 阿斯特拉靈符 1354312 25★：MATT 529 起複利 +192 ＋ 16–25★ 207 = 399、MP 255 |
+| 1342xxx 雙刀（slot Si，`isWeapon` true） | 暫用非武器表（同 172xxxx） | **未驗證**：fixture 無樣本；`STARFORCE.ruleSources.usesWeaponTable` 標為 KMS-estimate 並註明 | — |
+| 鞋 速度/跳躍 | 1–15★ 表；**11★ = 2**（W2 單星表與累計表矛盾，由 fixture 定） | W2 + fixture | 10 件 ≥15★ 鞋子全部 速度/跳躍 18 |
+| 手套攻 1–15★ | 5,7,9,11,13,14,15★ 各 +1 | W2 | — |
+| HP 不加的部位 | 手套、鞋、臉飾、眼飾（W2）＋耳環、機器心臟、胸章（fixture）→ `noHpSlots` | W2 + fixture | 耳環 16–25★、心臟、VIP 胸章 HP 皆 0 |
+| 'Tm' 部位範圍 | `noHpSlots` / `noDefSlots` 的 'Tm'（機器心臟）同時命中 43 件**龍神/機甲戰神零件**（194–197xxxx、161–165xxxx，islot 也是 Tm，且 `canStarforce` true）| **未驗證**：fixture 只有機器心臟樣本，這 43 件不加 HP/DEF 是規則的副作用、沒有來源 | — |
+| 阿斯特拉副手 172xxxx 的 DEF | 只加到 15★（`statTable.defMaxStar(equip)` = 15；其他裝備 Infinity）：0 防從 1 起算、1–15★ 複利 → 16★ 以上固定 +16 | fixture（`ruleSources.astraDefCap`，TMS；無規則原文） | 5 件 19–25★（手環/羽毛/腕帶/萬能彈藥 24–25★、遺跡 19★）DEF 皆 +16 |
+
+**fixture 驗證結論（Task 4，2026-11-09）**：`starforceStats()` 對 fixture 中 277 件 starforce > 0 的裝備，supports 為 true 的 272 件**全數一致**（Task 1b 後 277/277，見下）。過程中被 fixture 推翻並修正的規則：
+1. 16–22★ 屬性分配：原寫「非武器四屬」→ 同名同星的永恆裝備有的有 STR/INT、有的沒有，唯一一致的解釋是「職業屬性 ＋ 基礎＋卷軸後已有的屬性」（16★+ 共 988 個「件×屬性」樣本，星火單獨有該屬性的 34 例全部沒有 16★+ 加成）。武器（命運系）也符合同一規則，不再分武器/非武器。
+2. 0 防裝備的 DEF：照公式從 0 起算會少 1（25★ 得 30），實際 32 → `defSeed` 讓 0 從 1 起算。
+3. 鞋 11★：null → 2。
+4. HP 不加部位：補上耳環、機器心臟、胸章；DEF 不加：機器心臟、胸章、武器表裝備。
+5. `usesWeaponTable`：1354xxx 靈符副手改用武器表（阿斯特拉靈符；只有這 1 件樣本，所以範圍限 1354xxx）。1342xxx 雙刀維持非武器表，未驗證。
+
+**Task 1b（2026-11-09）**：匯出程式把 172xxxx 阿斯特拉副手（id 前 3 碼 172 且 islot Si，114 件；WZ `tuc = 0`）改為 `canStarforce = true`（WZ 依據見 `tools/wz-export/README.md`「172xxxx 阿斯特拉副手」），並加上 DEF 只到 15★ 的規則（`defMaxStar`）。之後 fixture 中 277 件 starforce > 0 的裝備**全部** supported 且一致（原本略過的 5 件：手環/羽毛/腕帶/遺跡/萬能彈藥）。同樣 `tuc = 0` 的 15 件阿斯特拉盾（1098012–1098014、1099023–1099034）沒有 fixture 樣本，維持不可星力。
+
+## SCROLLS / RECOVERY — `source: 'TMS'`（玩家整理）
+
+來源：
+- S1 巴哈姆特「楓之谷怎麼玩之第二節——裝備與強化」https://home.gamer.com.tw/artwork.php?sn=5180421（約 2024，咒文表為圖片）
+- S2 巴哈姆特「For RB 玩家的攻略 - 卷軸/咒文」https://forum.gamer.com.tw/C.php?bsn=7650&snA=1031391（2025-02-16，含遊戲內截圖）
+- 沒有 beanfun 官方咒文數值表；v283 的販售名單未確認。
+
+| 規則 | 值 | 來源 | fixture 驗證 |
+|---|---|---|---|
+| 咒文 機率 | 100 / 70 / 30 / 15%（15% 無飾品） | S1, S2 | — |
+| 咒文 防具 111+ 100/70/30% | 屬 3/4/7、HP 30/70/120、防 3/5/10 | S1 | — |
+| 咒文 防具 111+ 15% | 屬 10（S2）；**HP 170、防 15 由 fixture 推得** | S2 + fixture | 永恆弓箭手帽 14×：DEX 140、HP 2380、DEF 210；永恆弓箭手鞋 8×：80/1360/120；永恆盜賊肩膀 2×：20/340/30 |
+| 防具第 4 次成功 +1 攻 | 只有咒文；手套除外。**推測**（程式採用的解讀，無官方文字）：該件所有咒文的痕跡（不分成功率）依序累計，第 4 次成功時 +1，僅一次；非咒文卷軸（B 卷等）不計入次數 → `SCROLLS.ruleSources.traceFourthBonus`（`guess: true`） | S1 遊戲內文字「進行4次強化攻擊力增加：+1」；research/scroll.md 建議「該件防具累計第 4 次成功時 +1，僅一次」 | 15% 防具 8×/9×/14× 皆 ATT 1；B 卷 17× 攻 153 = 17×9，無 +1 |
+| 副手（盾）、肩膀用防具表 | | fixture 推得 | 惡魔賢者盾 8×：INT 80、HP 1360、DEF 120、MATT 1 |
+| 咒文 手套 | 71+：攻 1/2/3/4 | S1, S2 | 永恆弓箭手手套 8×：ATT 32 = 8×4 |
+| 咒文 飾品 | 111+：屬 2/3/5（腰帶歸飾品，S1） | S1 | 頂級培羅德耳環 8×30%：DEX 40；7×70%：INT 21 |
+| 咒文 武器 | 111+：1屬3攻 / 2屬5攻 / 3屬7攻 / 4屬9攻 | S1, S2 | 命運鬥拳 9×15%：LUK 36、ATT 81；命運長杖 8×：INT 32、MATT 72 |
+| 咒文 心臟 | ≤100 等：攻 1/2/3、2/3/5；101+ **無來源 → 不提供** | S1 | — |
+| 選 HP | 1 屬 = 50 HP（+ 防具原本附的 HP） | S1（9 個資料點吻合） | 15% 防具 HP 版 = 670 是依此規律外推，未驗證 |
+| 極電／RED／X／V／B | 武器·心臟 全屬/攻：5/9、8/10、10/12、11/13、14/14；防具·手套 攻 4/5/7/8/9（B 另全屬 +2）；飾品 攻 4/5/7/8/9 | S2 | B 防具：永恆*帽 17× 34/153；B 手套 13× 26/117（手套與防具同值為 fixture 推得）；V 心臟：鈦之心 10× 全屬 110 / MATT 130（「屬」= 四屬全加） |
+| 培羅德卷軸 | 飾品 全屬 3 / 攻 4（只限頂級培羅德飾品，工具未檢查 id） | S2 | 頂級培羅德戒指 3×：9 / 12；耳環 7×：21 / 28 |
+| 命運／救世／驚奇樂觀混沌 | 隨機值 → 使用者填平均值（spec §5） | S2 | — |
+| 純白卷軸 | 100% | S2（舊制 5%，現 100%） | — |
+
+### 代表圖示（`ScrollDef.iconItemId` / `RECOVERY.items[].iconItemId`）
+
+UI 用 `iconUrl(iconItemId)` 顯示。同名多版本（單手／雙手武器、防具、飾品；攻擊力／魔力）只取一張代表。
+查法：`tools/wz-export` 的 `dotnet run -- --client "C:\Program Files\gamania Games\MapleStory" --node "String\Consume.img"`（咒文的痕跡另查 `String\Etc.img\Etc`）依名稱比對，TMS v283。
+固定值／隨機卷軸一律取「單手武器攻擊力」版：防具版的 RED（2616000）、真．極電（2616002）在 Nexon CDN 回 204（無圖），單手武器版全部 200。
+
+| scroll id | 代表道具 ID | WZ 名稱 | CDN（2026-11-09） |
+|---|---|---|---|
+| trace100 / trace70 / trace30 / trace15 | 4001832 | 咒文的痕跡（Etc；咒文強化的材料本身，非卷軸） | 200 |
+| lightning | 2613005 | 真．極電單手武器攻擊力卷軸 | 200 |
+| red | 2613012 | RED單手武器攻擊力卷軸 | 200 |
+| x | 2613048 | X單手武器攻擊力卷軸 | 200 |
+| v | 2613062 | V單手武器攻擊力卷軸 | 200 |
+| b | 2613068 | 究極的黑暗單手武器攻擊力卷軸（autodesc 防具版：攻 +9、四屬 +2 = B 卷） | 200 |
+| pensalir | 2615001 | 培羅德高級卷軸（desc：AllStatus +3、攻 +4；**desc 寫成功率 60%**，工具採 S2 的 100%） | 200 |
+| destiny | 2613076 | 命運單手武器攻擊力卷軸 | 200 |
+| savior | 2613086 | 救世單手武器攻擊力卷軸 | 200 |
+| chaosAmazing | 2049177 | 卡勒馬驚訝樂觀的混沌卷軸60% | 200 |
+| cleanSlate（RECOVERY） | 2049025 | 純白的卷軸100% | 200 |
+
+交叉核對：五張單手武器版 autodesc（四屬/攻）＝ 5/9、8/10、10/12、11/13、14/14，與上表「極電／RED／X／V／B」武器值完全一致；WZ 中沒有不帶「真．」的極電卷軸，所以 `lightning` 即真．極電。
+
+目前沒有 `iconItemId: null` 的卷軸；日後若有，須在此表列出其 scroll id 與原因（`scroll.spec.ts` 會檢查）。
+
+未納入：一般混沌（只有 GMS 分布）、榮耀／真極電／突破極限（無 TMS 數值）、保護類道具。
+
+## FLAME — 機率／行數／行種類 `source: 'TMS'`（官方），各階數值 `KMS-estimate`（見 `FLAME.ruleSources`）
+
+來源：
+- **TMS 官方機率公告「裝備附加屬性」** https://maplestory-event.beanfun.com/eventad/eventad?eventadid=8389（302 → beanfun-event.beanfun.com/EventAD_Mobile/EventAD?eventAdId=8389），2026-11-09 擷取，常設公告（1900–2100）。原文存於 `research/flame-tms-official.md`。內容包括：
+  - 星火種類與階級機率
+  - 行數機率
+  - 武器與其他裝備各自的行種類（均等機率）
+  - 等級門檻
+- 官方頁**沒有**各階的數值，數值依 maplestorywiki Bonus Stats / Stat Tables（2026-09-26）並以 fixture 驗證。
+- 這份官方頁取代先前的 KMS 機率表：KMS 的強大／永遠／黑色／深淵與重設追加屬性的機率，都已移除。
+
+### 官方機率（擲出的階級）
+
+| 星火 | T1 | T2 | T3 | T4 | T5 | BOSS 裝 |
+|---|---|---|---|---|---|---|
+| 強力的輪迴星火 | 50% | 30% | 20% | 0 | 0 | **不加階** → T1–T3 |
+| 永遠的輪迴星火 | 44.44% | 33.33% | 22.22% | 0 | 0 | **不加階** → T1–T3 |
+| 覺醒的輪迴星火 | 97.36% | 1.50% | 0.58% | 0.33% | 0.23% | **+2** → T3–T7 |
+| 覺醒的暗黑輪迴星火 | 0 | 85% | 13% | 1.5% | 0.5% | **+2** → T4–T7 |
+
+- 官方原文：「[覺醒的輪迴星火、覺醒的暗黑輪迴星火]在BOSS裝備，會從決定的等級+2等級進行計算來作為3~7等級」→ 程式以 `bossTierBonus` 表示：覺醒兩種為 2，強力／永遠為 0。
+- 永遠那一列的總和是 99.99%（官方四捨五入），程式照抄不正規化。
+- `tierRange(true) = {1, 7}`，也就是強力／永遠的 T1–T3 加上覺醒的 T3–T7；`tierRange(false) = {1, 5}`。
+- 行數：一般裝備 1/2/3/4 行 = 40/40/15/5%；BOSS 裝 4 行 100%。
+- 行種類（全部均等機率）：
+  - 武器 19 種：四屬、六種雙屬、HP、MP、穿戴等級減少、防禦、攻擊力、魔力、BOSS%（Lv90 以上）、傷害%、全屬性%。
+  - 其他裝備 19 種：四屬、六種雙屬、HP、MP、穿戴等級減少、防禦、攻擊力／魔力（Lv60 以上）、移動速度、跳躍力、全屬性%（Lv70 以上）。
+
+### fixture 相容性檢查（官方規則 vs 實際裝備）
+
+- 有星火的 BOSS 裝 147 筆，其中 103 筆有全屬性%。全屬性% 的值等於階級，沒有其他解法，分布如下：
+
+  | T1 | T2 | T3 | T4 | T5 | T6 | T7 |
+  |---|---|---|---|---|---|---|
+  | 2 | 7 | 41 | 36 | 12 | 2 | 3 |
+
+- 依官方規則，BOSS 裝各階只能由下列星火產生：
+  - **T1、T2**：只能來自強力／永遠（BOSS 裝不加階，T1–T3）。覺醒的最低是 1+2 = T3，暗黑覺醒最低是 2+2 = T4。所以觀察到的 2 + 7 = 9 筆 T1/T2，必然是強力或永遠洗出來的，與官方規則相容。舊的 KMS 規則（所有星火都 +2）解釋不了這 9 筆。
+  - **T3**：強力（20%）、永遠（22.22%），或覺醒擲出 T1（97.36%）+2 = T3，三者都可能。
+  - **T4–T7**：只能來自覺醒／暗黑覺醒，例如暗黑覺醒擲出 T2（85%）+2 = T4。
+- 結論：沒有任何觀察到的階級落在官方規則不可能產生的範圍。
+- 全部 196 筆星火做行分解（BOSS 裝 T1–T7、固定 4 行，加上下表的數值規則）→ **196/196 可解**。若限定 BOSS 裝只有 T3–T7，只有 150 筆可解，剩下 46 筆必須含 T1/T2，這也符合強力／永遠在 BOSS 裝不加階的規則。
+- 比例本身不拿來檢驗機率：玩家會挑結果（可選保留舊結果），而且不知道每件用的是哪種星火。
+
+### 可否附加星火 / BOSS 規則（Task 1b）
+
+- `canFlame` 是匯出程式依部位推估（KMS-estimate，見 `tools/wz-export/README.md`），另有逐 id 覆寫：1143471 不朽的遺產（勳章例外 Immortal Legacy）、1202287 古代石板複製品（圖騰例外 Ancient Tablet Replica）→ 可附加。依據 `research/flame.md` 的例外清單＋fixture。
+- 星火的 BOSS 規則（固定 4 行、覺醒 +2 階、BOSS 武器攻指數）讀 `EquipData.flameBoss`，不是 `bossReward`。兩者只在 1202287 不同：WZ `bossReward = 1`，但 fixture 8 筆星火只在非 BOSS 規則下全部可解 → `flameBoss = false`。1143471 的 6 筆在 BOSS 規則下全部可解 → `flameBoss = true`（= bossReward）。
+- 加入這兩件後，`flame.spec.ts` 不再有 canFlame=false 的特例分支：fixture 中所有有星火的裝備都 `canFlame` 且可反解重現。
+
+### 各階數值（KMS-estimate＋fixture）
+
+| 規則 | 值 | fixture 驗證 |
+|---|---|---|
+| 單屬性／防禦 | (floor(L/20)+1)×階，**上限 12**（wiki 表「230+ = 12」） | 196 筆中，封頂 12 → 196/196 可解；不封頂（Lv250 = 13）→ 只有 129 筆 → 支持封頂。另外永恆盜賊頭巾 DEF 36 = 12×3 |
+| 雙屬性 | 表：0-39:1 … 160-199:5、200-249:6、250+:7（Lv240–249 表和公式不一致，依表） | Lv240–249 無樣本 |
+| HP/MP | <200：floor(L/10)×30；200–249：600+floor((L−200)/10)×20；250+：700 | 命運鬥拳 HP 2800 = 700×4、命運調節器 3500 = 700×5 |
+| 武器攻/魔 | ceil(基礎攻 × (floor(L/40)+1) × 階 × 1.1^(階−1；BOSS 裝為 階−3) / 100)。沒有基礎魔攻的武器，魔攻行改用基礎攻 | 進位：ceil 只有 1 筆不符、round 6 筆、floor 11 筆。那 1 筆是命運弓箭 MATT 148 = ceil(349×42.35%)，套用魔攻規則後也成立。BOSS 武器若改用非 BOSS 指數（階−1），會變成 185/196 → BOSS 裝用 階−3 |
+| BOSS 武器攻/魔 T1/T2 | 依 BOSS 公式外推（1.1^(階−3)）；`valueNote()` 會回傳註記，`ruleSources.bossWeaponAttLowTier` 標 `KMS-estimate` | **無來源、無 fixture 樣本**：fixture 的 BOSS 武器攻擊行全是 T4–T7。官方確認強力／永遠在 BOSS 裝會出現 T1/T2，所以這個分支會用到，但數值未驗證 |
+| 其他 | 穿戴等級減少 5×階；非武器攻/魔 = 階；全屬% = 階；BOSS% = 2×階；傷害% = 階；速度/跳躍 = 階 | — |
+
+（先前 round 1 的「BOSS 機率表 verified: false」與「BOSS 武器 T1/T2 回傳 null」都已被官方資料取代並移除。）
+
+## EXCEPTIONAL（卓越強化）— 屬性 `source: 'TMS'`（fixture 推得），機率/費用 `KMS-estimate`（實為 GMS）
+
+- 可強化裝備與次數上限：WZ `Etuc`（6 件：口紅控制器標誌 1、附有魔力的眼罩 1、指揮官力量耳環 1、夢幻的腰帶 1、傲慢的原罪 3、不朽的遺產 3）。
+- WZ 沒有每級屬性；沒找到 TMS/KMS 數值表。只用 fixture 實際觀察到的組合：
+  - Lv160 第 1 級：四屬 15、HP/MP 750、攻/魔 10（1012632、1022278，共 10 件）
+  - Lv200 第 1 級：四屬 20、HP/MP 1000、攻/魔 15（1032316、1132308，共 4 件）
+  - Lv250 第 2 級（累計）：四屬 40、HP/MP 2000、攻/魔 30（1143471，3 件）
+  - 查表依 **item id**（不依裝備等級），不會拿別件裝備的數值來用。其他組合**回傳 null（無資料）**，也不做線性外推，包括不朽的遺產第 1、3 級，以及傲慢的原罪 1012911 全部（它和不朽的遺產同為 Lv250、Etuc 3，但沒有任何樣本）。
+- 成功率 100/50/25%、費用 0 / 25 億 / 50 億：GMS wiki https://maplestorywiki.net/w/Exceptional_Enhancement（2026-11-09 擷取），標 `KMS-estimate`，TMS 未驗證。
+- 說明：fixture 的 `total` 不含卓越分項（spec §6.3）。
+
+## POTENTIAL — `source: 'TMS'`
+
+- 選項：WZ `Item/ItemOption.img`（TMS v283 匯出，`public/data/tms-v283/potential-options.json`）。只取 grade 1–4（id 1xxxx–4xxxx）；grade 0（無等級）與 6/7（非裝備潛能）略過。
+- id 第 2 位（`id % 10000` 的千位）= 2 → 附加潛能（例：42041 傳說附加 STR%）。KMS WZ 慣例，資料中各等級主/附加數量吻合。
+- `optionType` → 部位：10 武器、11 非武器、20 防具、40 飾品、51 帽、52 上衣、53 褲、54 手套、55 鞋。KMS WZ 慣例；以資料內容核對：爆擊傷害 = 54（手套）、速度/跳躍 = 55（鞋）、技能冷卻/等級 = 51（帽）、楓幣/掉寶 = 40（飾品）。
+- 逐規則來源記在 `POTENTIAL.ruleSources`：grades 為 TMS；slotMapping、additionalId、optionLevel 為 KMS-estimate。
+- 選項等級 = ceil(裝備等級/10)，1–25（KMS WZ 慣例，標示推估）；例：40041 傳說 STR% 在 Lv250 = 13%。
+- 階級名 特殊／稀有／罕見／傳說：TMS 遊戲內名稱（社群文章 https://www.lootbar.com/blog/zh-Hant/maplestory-gear-starter-to-endgame-progression.html 列「特殊 → 稀有 → …」）。
+- 介面差異：brief 寫 `options: {grade, slotGroup, text}[]`，但規則模組不能 fetch 也不能 import `src` 以外的檔案，所以改成 `buildOptions(raw)`，由 UI 載入 JSON 後呼叫。
