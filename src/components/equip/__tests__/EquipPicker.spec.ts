@@ -40,7 +40,10 @@ const INDEX: IndexEntry[] = [
   entry({ id: 1005984, name: '永恆戰士頭盔', level: 250, jobs: ['warrior'] }),
   entry({ id: 1005985, name: '永恆共用帽', level: 250 }),
   // bucket 160: only reachable through 其他
-  entry({ id: 1113000, name: '孤單戒指', category: 'Ring', slot: 'Ri', level: 160, searchCategory: null, searchDetail: null })
+  entry({ id: 1113000, name: '孤單戒指', category: 'Ring', slot: 'Ri', level: 160, searchCategory: null, searchDetail: null }),
+  // bucket 110: same name + same level, different detail (one-handed vs two-handed sword)
+  entry({ id: 1302108, name: '星之劍', category: 'Weapon', slot: 'Wp', level: 115, searchCategory: 'OneHandSword', searchDetail: 'Sword', jobs: ['warrior'] }),
+  entry({ id: 1402054, name: '星之劍', category: 'Weapon', slot: 'WpSi', level: 115, searchCategory: 'TwoHandSword', searchDetail: 'Sword', jobs: ['warrior'] })
 ]
 
 const CATEGORIES: SearchCategory[] = [
@@ -52,7 +55,8 @@ const CATEGORIES: SearchCategory[] = [
       { id: 'Cap', name: '帽子', begin: 1000000, end: 1009999, ranges: [[1000000, 1009999]] }
     ]
   },
-  { id: 'OneHandSword', name: '單手武器', details: [{ id: 'Sword', name: '劍', begin: 1302000, end: 1302999, ranges: [[1302000, 1302999]] }] }
+  { id: 'OneHandSword', name: '單手武器', details: [{ id: 'Sword', name: '劍', begin: 1302000, end: 1302999, ranges: [[1302000, 1302999]] }] },
+  { id: 'TwoHandSword', name: '雙手武器', details: [{ id: 'Sword', name: '大劍', begin: 1402000, end: 1402999, ranges: [[1402000, 1402999]] }] }
 ]
 
 const JOBS: JobsData = { groups: [], specJobs: [] }
@@ -101,7 +105,7 @@ describe('EquipPicker', () => {
     const { w } = await setup()
     const text = w.text()
     for (const l of ['等級', '分類', '部位', '職業', '裝備']) expect(text).toContain(l)
-    expect(labels(w, 'level')).toEqual(['Lv.0–9', 'Lv.100–109', 'Lv.160–169', 'Lv.250–259'])
+    expect(labels(w, 'level')).toEqual(['Lv.0–9', 'Lv.100–109', 'Lv.110–119', 'Lv.160–169', 'Lv.250–259'])
     await sel(w, 'level').setValue('250')
     expect(labels(w, 'job')).toEqual(['共用', '劍士', '法師', '弓箭手', '盜賊', '海盜'])
     await sel(w, 'level').setValue('100')
@@ -270,6 +274,15 @@ describe('EquipPicker', () => {
     vi.advanceTimersByTime(60)
     await w.vm.$nextTick()
     expect(w.findAll('[data-test="search-result"]')).toHaveLength(0)
+  })
+
+  it('search rows show the detail name so same-name same-level items are distinguishable', async () => {
+    const { w } = await setup()
+    await search(w, '星之劍')
+    const items = w.findAll('[data-test="search-result"]')
+    expect(items).toHaveLength(2)
+    expect(items.map((i) => i.get('[data-test="search-name"]').text())).toEqual(['星之劍', '星之劍'])
+    expect(items.map((i) => i.get('[data-test="search-detail"]').text())).toEqual(['劍', '大劍'])
   })
 
   it('search lists canonical entries only', async () => {

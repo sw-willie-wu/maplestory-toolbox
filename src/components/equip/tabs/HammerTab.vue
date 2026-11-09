@@ -88,8 +88,6 @@ const slots = computed(() => totalSlots(props.equip, state.value.hammer))
 </template>
 
 <style lang="scss" scoped>
-@use './tab-common';
-
 $muted: #7a8597;
 
 .hm-sub {

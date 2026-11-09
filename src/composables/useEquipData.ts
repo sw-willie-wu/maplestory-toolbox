@@ -51,8 +51,6 @@ interface DerivedState {
   byBucket: Map<number, IndexEntry[]>
   /** Non-empty level buckets, ascending. */
   buckets: number[]
-  /** id → label shown by displayName (variantLabel, plus ` #id` when it repeats within its (slot, name, cash) group). */
-  labels: Map<number, string>
   slotNames: Record<string, string>
   sets: Record<string, SetInfo>
   categories: SearchCategory[]
@@ -66,7 +64,6 @@ function emptyState(): DerivedState {
     tool: [],
     byBucket: new Map(),
     buckets: [],
-    labels: new Map(),
     slotNames: {},
     sets: {},
     categories: [],
@@ -84,18 +81,6 @@ function buildState(
   categories: SearchCategory[],
   jobs: JobsData
 ): DerivedState {
-  const groups = new Map<string, IndexEntry[]>()
-  for (const e of entries) {
-    if (e.variantLabel === '') continue
-    const key = `${e.slot}\u0000${e.name}\u0000${e.cash}\u0000${e.variantLabel}`
-    const g = groups.get(key)
-    if (g) g.push(e)
-    else groups.set(key, [e])
-  }
-  const labels = new Map<number, string>()
-  for (const g of groups.values()) {
-    for (const e of g) labels.set(e.id, g.length > 1 ? `${e.variantLabel} #${e.id}` : e.variantLabel)
-  }
   const tool = entries.filter(inToolScope)
   const byBucket = new Map<number, IndexEntry[]>()
   for (const e of tool) {
@@ -109,7 +94,6 @@ function buildState(
     tool,
     byBucket,
     buckets: [...byBucket.keys()].sort((a, b) => a - b),
-    labels,
     slotNames,
     sets,
     categories,
@@ -203,11 +187,6 @@ export function useEquipData(baseUrl = '/data/tms-v283', fetchImpl: typeof fetch
     potentialPromise ??= getJson<RawPotentialOption[]>('potential-options.json').then((raw) => POTENTIAL.buildOptions(raw))
     potentialPromise.catch(() => (potentialPromise = null))
     return potentialPromise
-  }
-
-  function displayName(e: IndexEntry): string {
-    const label = state.value.labels.get(e.id) ?? e.variantLabel
-    return label ? `${e.name}（${label}）` : e.name
   }
 
   function wearable(e: IndexEntry, job: JobChoice): boolean {
@@ -355,7 +334,6 @@ export function useEquipData(baseUrl = '/data/tms-v283', fetchImpl: typeof fetch
     load,
     loadEquip,
     loadPotentialOptions,
-    displayName,
     search,
     levelBuckets,
     categories,

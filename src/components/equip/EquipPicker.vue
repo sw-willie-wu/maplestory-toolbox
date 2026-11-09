@@ -143,6 +143,11 @@ const open = ref(false)
 const active = ref(-1)
 const results = computed(() => (query.value.trim() ? props.data.search(query.value) : []))
 const showResults = computed(() => open.value && query.value.trim() !== '')
+/** Detail (部位) name of a result, so same-name same-level items (e.g. 單手劍 vs 雙手劍) are distinguishable. */
+function searchDetail(e: IndexEntry): string {
+  const p = props.data.pathOf(e)
+  return props.data.detailName(p.category, p.detail)
+}
 
 let blurTimer: ReturnType<typeof setTimeout> | null = null
 function clearBlurTimer(): void {
@@ -237,7 +242,8 @@ function onSearchKeydown(ev: KeyboardEvent): void {
           @mouseenter="active = i"
           @click="pick(e)"
         >
-          <span data-test="search-name">{{ data.displayName(e) }}</span><small>Lv.{{ e.level }}</small>
+          <span data-test="search-name">{{ e.name }}</span>
+          <small><span data-test="search-detail">{{ searchDetail(e) }}</span> · Lv.{{ e.level }}</small>
         </li>
       </ul>
       <div v-else-if="showResults" class="eq-picker__results eq-picker__empty">找不到符合的裝備</div>
@@ -269,7 +275,7 @@ function onSearchKeydown(ev: KeyboardEvent): void {
       <label for="eq-picker-equip">裝備：</label>
       <div class="full">
         <select id="eq-picker-equip" data-test="equip" :value="equipId ?? ''" @change="onEquip">
-          <option v-for="e in equipOptions" :key="e.id" :value="String(e.id)">{{ data.displayName(e) }}</option>
+          <option v-for="e in equipOptions" :key="e.id" :value="String(e.id)">{{ e.name }}</option>
         </select>
       </div>
     </div>

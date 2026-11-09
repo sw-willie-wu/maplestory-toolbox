@@ -73,10 +73,3 @@ export function kmsNotices<K extends string>(
   }
   return out
 }
-
-/** Integer in [min, max]; NaN / empty → min. */
-export function clampInt(v: unknown, min: number, max: number): number {
-  const n = Math.floor(Number(v))
-  if (!Number.isFinite(n)) return min
-  return Math.max(min, Math.min(max, n))
-}

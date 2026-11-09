@@ -207,8 +207,6 @@ const guess = computed<NoticeItem[]>(() => {
 </template>
 
 <style lang="scss" scoped>
-@use './tab-common';
-
 $line: rgb(200, 206, 216);
 $muted: #7a8597;
 

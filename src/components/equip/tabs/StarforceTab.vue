@@ -106,8 +106,6 @@ const notices = computed(() => {
 </template>
 
 <style lang="scss" scoped>
-@use './tab-common';
-
 .sf-msg {
   margin: 0;
   color: #8a93a0;
