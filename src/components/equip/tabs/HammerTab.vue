@@ -5,7 +5,8 @@ import { hammerExpectation, hammerUses, type HammerUse } from '@/utils/mst/enhan
 import { HAMMER, type HammerDef } from '@/utils/mst/enhance/rules/hammer'
 import { totalSlots } from '@/utils/mst/enhance/scroll'
 import type { EquipData } from '@/utils/mst/enhance/types'
-import { clampInt, formatMeso, formatNum } from '../format'
+import StepperInput from '../ui/StepperInput.vue'
+import { formatMeso, formatNum } from '../format'
 
 const props = defineProps<{ equip: EquipData }>()
 const state = defineModel<EnhanceState>('state', { required: true })
@@ -14,9 +15,12 @@ const uses = computed(() => hammerUses(props.equip, state.value.hammer))
 const useOf = (def: HammerDef): HammerUse => uses.value.find((u) => u.id === def.id)!
 const blocked = (def: HammerDef) => def.blockedByBlockGoldHammer && props.equip.blockGoldHammer
 
-function setUses(def: HammerDef, v: string) {
-  // Keep the raw request (up to 99) so an over-max input is reported instead of silently rewritten.
-  state.value.hammer[def.id] = clampInt(v, 0, 99)
+/** Stepper value; the stepper clamps new input to 0..def.max (an over-max value already in the state is kept and reported). */
+function usesOf(def: HammerDef): number {
+  return state.value.hammer[def.id] ?? 0
+}
+function setUses(def: HammerDef, v: number) {
+  state.value.hammer[def.id] = v
 }
 
 function reason(def: HammerDef): string {
@@ -54,45 +58,73 @@ const slots = computed(() => totalSlots(props.equip, state.value.hammer))
 
 <template>
   <div class="hammer-tab">
-    <div class="text-muted small mb-2">可上卷次數：基本 {{ equip.tuc }} → 含鐵鎚 {{ slots }}</div>
-    <div v-for="{ def, reason: why, exp } in rows" :key="def.id" class="hammer-row">
-      <div class="d-flex flex-wrap align-items-center gap-2">
-        <label class="hammer-name" :for="`hammer-${def.id}`">{{ def.name }}</label>
-        <div class="input-group input-group-sm count-input">
-          <input :id="`hammer-${def.id}`" type="number" min="0" :max="def.max" class="form-control"
-            :value="state.hammer[def.id] ?? 0" :disabled="blocked(def)" :data-test="`hammer-${def.id}`"
-            @input="setUses(def, ($event.target as HTMLInputElement).value)" />
-          <span class="input-group-text">/ {{ def.max }}</span>
+    <h3 class="eq-card__title">
+      強化次數增加
+      <span class="hm-sub">可上卷次數：基本 {{ equip.tuc }} → 含鐵鎚 {{ slots }}</span>
+    </h3>
+    <div class="eq-form">
+      <template v-for="{ def, reason: why, exp } in rows" :key="def.id">
+        <label :for="`hammer-${def.id}`">{{ def.name }}：</label>
+        <StepperInput v-if="!blocked(def)" :id="`hammer-${def.id}`" :model-value="usesOf(def)" :min="0"
+          :max="def.max" :suffix="`/ ${def.max}`" :ariaLabel="def.name" :data-test="`hammer-${def.id}`"
+          @update:model-value="setUses(def, $event)" />
+        <span v-else class="hm-blocked">不可使用</span>
+        <div class="hm-info">
+          <span v-if="why" class="hm-reason" :data-test="`hammer-reason-${def.id}`">{{ why }}</span>
+          <span v-if="!blocked(def)" class="hm-exp" :data-test="`hammer-expect-${def.id}`">
+            <template v-if="exp.kind === 'none'">未使用</template>
+            <template v-else-if="exp.kind === 'unknown'">成功率／費用：<b>規則待查證</b>（只計入可上卷次數）</template>
+            <template v-else>
+              期望嘗試 <b>{{ formatNum(exp.attempts, 2) }}</b> 次
+              <template v-if="exp.meso > 0">・期望楓幣 <b>{{ formatMeso(exp.meso) }}</b></template>
+              <template v-if="exp.spellTrace > 0">・咒文的痕跡 <b>{{ formatNum(exp.spellTrace, 0) }}</b></template>
+            </template>
+          </span>
         </div>
-        <span v-if="why" class="text-warning small" :data-test="`hammer-reason-${def.id}`">{{ why }}</span>
-      </div>
-      <div class="expect mt-1 small" :data-test="`hammer-expect-${def.id}`">
-        <span v-if="exp.kind === 'none'" class="text-muted">未使用</span>
-        <template v-else-if="exp.kind === 'unknown'">成功率／費用：<strong>規則待查證</strong>（只計入可上卷次數）</template>
-        <template v-else>
-          期望嘗試 {{ formatNum(exp.attempts, 2) }} 次
-          <template v-if="exp.meso > 0">・期望楓幣 {{ formatMeso(exp.meso) }}</template>
-          <template v-if="exp.spellTrace > 0">・咒文的痕跡 {{ formatNum(exp.spellTrace, 0) }}</template>
-        </template>
-      </div>
+      </template>
     </div>
-    <div class="text-muted small mt-2">黃金鐵鎚成功率與費用為台版玩家整理資料。</div>
+    <p class="hm-note">黃金鐵鎚成功率與費用為台版玩家整理資料。</p>
   </div>
 </template>
 
 <style lang="scss" scoped>
 @use './tab-common';
 
-.hammer-row + .hammer-row {
-  margin-top: 0.75rem;
+$muted: #7a8597;
+
+.hm-sub {
+  font-weight: 400;
+  font-size: 13px;
+  color: $muted;
 }
 
-.hammer-name {
-  min-width: 8rem;
-  font-weight: 600;
+.hm-blocked {
+  color: $muted;
 }
 
-.count-input {
-  width: 7rem;
+.hm-info {
+  grid-column: 3 / span 2;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 13px;
+}
+
+.hm-reason {
+  color: #a86a00;
+}
+
+.hm-exp {
+  color: #333;
+
+  b {
+    color: var(--color-navbar, rgb(40, 50, 65));
+  }
+}
+
+.hm-note {
+  margin: 14px 0 0;
+  font-size: 12px;
+  color: $muted;
 }
 </style>

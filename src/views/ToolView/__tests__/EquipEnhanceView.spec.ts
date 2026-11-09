@@ -72,6 +72,12 @@ async function pick(w: VueWrapper, id: number) {
 }
 const tipName = (w: VueWrapper) => w.findComponent(EquipTooltip).text()
 const inputValue = (w: VueWrapper, test: string) => (w.find(`[data-test="${test}"]`).element as HTMLInputElement).value
+/** Types into a StepperInput (data-test lands on its inner input) and commits it (blur). */
+async function stepTo(w: VueWrapper, test: string, v: string) {
+  const input = w.find(`[data-test="${test}"]`)
+  await input.setValue(v)
+  await input.trigger('blur')
+}
 
 describe('EquipEnhanceView', () => {
   it('shows data version from meta', async () => {
@@ -147,8 +153,8 @@ describe('EquipEnhanceView sidebar and panels', () => {
 
   it('panel inputs survive switching to the picker and back', async () => {
     const w = await selected(RING)
-    await w.find('[data-test="sf-from"]').setValue('12')
-    await w.find('[data-test="sf-target"]').setValue('22')
+    await stepTo(w, 'sf-from', '12')
+    await stepTo(w, 'sf-target', '22')
     await choose(w, 'picker')
     await choose(w, 'starforce')
     expect(inputValue(w, 'sf-target')).toBe('22')
@@ -162,15 +168,15 @@ describe('EquipEnhanceView sidebar and panels', () => {
 
   it('selecting another equip resets panel inputs', async () => {
     const w = await selected(CAP_BOSS)
-    await w.find('[data-test="sf-from"]').setValue('12')
-    await w.find('[data-test="sf-target"]').setValue('18')
+    await stepTo(w, 'sf-from', '12')
+    await stepTo(w, 'sf-target', '18')
     // same item again → reset as well
     await pick(w, CAP_BOSS)
     expect(inputValue(w, 'sf-from')).toBe('0')
     expect(inputValue(w, 'sf-target')).toBe('0')
     expect(w.findComponent(EquipTooltip).findAll('.star.lit')).toHaveLength(0)
 
-    await w.find('[data-test="sf-target"]').setValue('10')
+    await stepTo(w, 'sf-target', '10')
     await pick(w, CAP)
     expect(tipName(w)).toContain('天照的頭盔')
     expect(inputValue(w, 'sf-target')).toBe('0')
@@ -305,7 +311,7 @@ describe('EquipEnhanceView layout', () => {
         .find((l) => l.find('.stat-label').text() === label)!
         .text()
     expect(statLine('STR')).toBe('STR+25')
-    await w.find('[data-test="sf-target"]').setValue('25')
+    await stepTo(w, 'sf-target', '25')
     await flushPromises()
     expect(statLine('STR')).toContain('+142')
     expect(statLine('STR')).toContain('(25 +117)')
