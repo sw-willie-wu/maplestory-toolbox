@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
-import { readdirSync } from 'node:fs'
-import type { EquipData, JobsData, SearchCategory, SetInfo } from '../types'
+import { readdirSync, readFileSync } from 'node:fs'
+import { gzipSync } from 'node:zlib'
+import type { EquipData, IndexEntry, JobsData, SearchCategory, SetInfo } from '../types'
 import fixture from './fixtures/nexon-items.json'
 import { DATA_DIR, anyWithPrefix, loadEquipSync, loadIndexSync, readDataJson } from './helpers'
 
@@ -114,17 +115,58 @@ describe('exported TMS v283 equipment data', () => {
     for (const [key, n] of canon) expect(n, key).toBe(1)
   })
 
-  it('cash items are not exported (紅鷹鋼盔: non-cash 1000054 canonical, cash 1000009 absent)', () => {
+  it('cash and non-cash entries never share a group (紅鷹鋼盔: non-cash 1000054 and cash 1000009 both canonical)', () => {
     const byId = new Map(loadIndexSync().map((e) => [e.id, e]))
     expect(byId.get(1000054)).toMatchObject({ name: '紅鷹鋼盔', cash: false, canonical: true, variantLabel: '' })
-    expect(byId.has(1000009)).toBe(false)
-    expect(allEquips().some((e) => e.id === 1000009)).toBe(false)
+    expect(byId.get(1000009)).toMatchObject({ name: '紅鷹鋼盔', cash: true, canonical: true, variantLabel: '' })
   })
 
-  it('no cash item anywhere in public/data (index.json and every equip/<category>.json)', () => {
-    expect(loadIndexSync().filter((e) => e.cash).map((e) => e.id)).toEqual([])
-    expect(allEquips().filter((e) => e.cash).map((e) => e.id)).toEqual([])
-    expect(allEquips().length).toBeGreaterThan(10000)
+  it('exports cash items again (index.json, equip/<category>.json, equip/PetEquip.json)', () => {
+    expect(loadIndexSync().filter((e) => e.cash).length).toBeGreaterThan(10000)
+    expect(allEquips().filter((e) => e.cash).length).toBeGreaterThan(10000)
+    expect(readdirSync(DATA_DIR + 'equip')).toContain('PetEquip.json')
+    expect(loadEquipSync(1000009).cash).toBe(true)
+  })
+
+  it('enhanceable = !cash && (canStarforce || tuc > 0 || canFlame || canExceptional); cash is never enhanceable', () => {
+    const index = loadIndexSync()
+    for (const e of index) {
+      const d = loadEquipSync(e.id)
+      expect(e.enhanceable, `${e.id}`).toBe(!d.cash && (d.canStarforce || d.tuc > 0 || d.canFlame || d.canExceptional))
+      if (e.cash) expect(e.enhanceable, `${e.id}`).toBe(false)
+    }
+    expect(index.filter((e) => e.enhanceable).length).toBeGreaterThan(10000)
+  })
+
+  it('no 1690xxx placeholders (index.json and every equip/<category>.json)', () => {
+    const p1690 = (id: number) => Math.floor(id / 1000) === 1690
+    expect(loadIndexSync().filter((e) => p1690(e.id)).map((e) => e.id)).toEqual([])
+    expect(allEquips().filter((e) => p1690(e.id)).map((e) => e.id)).toEqual([])
+  })
+
+  it('six non-enhanceable categories have no enhanceable rows', () => {
+    const six = new Set(['Bits', 'TamingMob', 'SkillSkin', 'ArcaneForce', 'AuthenticForce', 'Jewel'])
+    const index = loadIndexSync()
+    for (const c of six) expect(index.some((e) => e.category === c), c).toBe(true)
+    expect(index.filter((e) => six.has(e.category) && e.enhanceable).map((e) => e.id)).toEqual([])
+  })
+
+  it('canonical prefers enhanceable: a group with any enhanceable entry has an enhanceable canonical', () => {
+    const groups = new Map<string, IndexEntry[]>()
+    for (const e of loadIndexSync()) {
+      const key = `${e.slot}\u0000${e.name}\u0000${e.cash}`
+      groups.set(key, [...(groups.get(key) ?? []), e])
+    }
+    for (const [key, members] of groups)
+      if (members.some((e) => e.enhanceable)) expect(members.find((e) => e.canonical)!.enhanceable, key).toBe(true)
+    // v283's one group where this overrides the lowest id: 凱撒戒指 1112751 (tuc 0) vs 1112779 (tuc 2).
+    const byId = new Map(loadIndexSync().map((e) => [e.id, e]))
+    expect(byId.get(1112779)).toMatchObject({ name: '凱撒戒指', enhanceable: true, canonical: true, variantLabel: '' })
+    expect(byId.get(1112751)).toMatchObject({ name: '凱撒戒指', enhanceable: false, canonical: false, variantLabel: '可上卷0次' })
+  })
+
+  it('tool index stays small (index.json gzip <= 1.5 MB)', () => {
+    expect(gzipSync(readFileSync(DATA_DIR + 'index.json')).length).toBeLessThanOrEqual(1.5 * 1024 * 1024)
   })
 
   it('categories.json: official ThothSearchOption categories with detail id ranges', () => {
@@ -147,7 +189,8 @@ describe('exported TMS v283 equipment data', () => {
     const cats = new Map(readDataJson<SearchCategory[]>('categories.json').map((c) => [c.id, c]))
     for (const e of allEquips()) {
       if (e.searchCategory !== null) expect(cats.has(e.searchCategory), `${e.id}`).toBe(true)
-      if (e.isWeapon) expect(e.searchCategory, `${e.id}`).not.toBeNull()
+      // Cash weapon-folder items may have none (v283: 13 rows, 1602000–1602007 技能效果 islot Ri, 5 × 1702xxx islot MaPn).
+      if (e.isWeapon && !e.cash) expect(e.searchCategory, `${e.id}`).not.toBeNull()
       if (e.searchDetail !== null) {
         const d = cats.get(e.searchCategory!)!.details.find((x) => x.id === e.searchDetail)
         expect(d, `${e.id}`).toBeDefined()
@@ -228,27 +271,93 @@ describe('exported TMS v283 equipment data', () => {
     for (const [id, variantLabel] of expected)
       expect(byId.get(id), `${id}`).toMatchObject({ canonical: false, variantLabel })
 
-    // Property check over every non-canonical entry without a flag label.
+    // Property check over every non-canonical entry without a flag label (index.json is id-sorted, so lower ids come
+    // first within each group): identical to the canonical in every field except id → ''; identical to a lower-id
+    // non-canonical entry of the group that kept a fallback label → '' (one labelled representative per identical
+    // set); otherwise the first differing field vs the canonical.
     const index = loadIndexSync()
     const key = (e: { slot: string; name: string; cash: boolean }) => `${e.slot}\u0000${e.name}\u0000${e.cash}`
     const canonOf = new Map(index.filter((e) => e.canonical).map((e) => [key(e), e.id]))
     const FLAG_LABEL = /^(活動版|期限|固定潛能|綁定版)(・|$)/
-    const strip = ({ id: _id, ...rest }: EquipData) => rest
-    const seen = { tuc: 0, level: 0, base: 0, id: 0, identical: 0 }
+    const body = (e: EquipData) => JSON.stringify({ ...e, id: 0 })
+    const kept = new Set<string>() // group key + body of entries that kept a fallback label
+    const keptBound = new Set<string>() // group key + body of entries labelled 綁定版
+    const seen = { tuc: 0, level: 0, base: 0, id: 0, identical: 0, collapsed: 0 }
     for (const e of index) {
-      if (e.canonical || FLAG_LABEL.test(e.variantLabel)) continue
+      if (e.canonical) continue
       const me = loadEquipSync(e.id)
+      const keptKey = `${key(e)}\u0000${body(me)}`
+      if (e.variantLabel === '綁定版') keptBound.add(keptKey)
+      if (FLAG_LABEL.test(e.variantLabel)) continue
+      // Collapsed flag-labelled duplicates (checked in the next test): 活動版/期限/固定潛能 come from EquipData flags;
+      // a '' entry identical to a lower-id 綁定版 entry is a collapsed 綁定版 duplicate.
+      if (me.eventVariant || me.timeLimited || me.fixedPotential) continue
+      if (e.variantLabel === '' && keptBound.has(keptKey)) continue
       const c = loadEquipSync(canonOf.get(key(e))!)
       const same = (k: keyof EquipData) => JSON.stringify(me[k]) === JSON.stringify(c[k])
       let want: string
-      if (!same('tuc')) (want = `可上卷${me.tuc}次`), seen.tuc++
-      else if (!same('level')) (want = `Lv.${me.level}`), seen.level++
-      else if (!same('base')) (want = '數值不同'), seen.base++
-      else if (JSON.stringify(strip(me)) !== JSON.stringify(strip(c))) (want = `#${e.id}`), seen.id++
-      else (want = ''), seen.identical++
+      if (body(me) === body(c)) (want = ''), seen.identical++
+      else if (kept.has(keptKey)) (want = ''), seen.collapsed++
+      else {
+        if (!same('tuc')) (want = `可上卷${me.tuc}次`), seen.tuc++
+        else if (!same('level')) (want = `Lv.${me.level}`), seen.level++
+        else if (!same('base')) (want = '數值不同'), seen.base++
+        else (want = `#${e.id}`), seen.id++
+        kept.add(keptKey)
+      }
       expect(e.variantLabel, `${e.id}`).toBe(want)
     }
-    for (const n of Object.values(seen)) expect(n).toBeGreaterThan(0)
+    for (const [k, n] of Object.entries(seen)) expect(n, k).toBeGreaterThan(0)
+  })
+
+  it('fully identical flag-labelled variants collapse: one representative per identical set keeps the label', () => {
+    // Non-canonical entries of one group that are identical in every field except id and would carry the same flag
+    // label: only the lowest id keeps it, the rest get ''. 活動版 / 期限 / 固定潛能 come from EquipData flags, so a row
+    // identical to its canonical has the canonical's own flags and gets '' (controller ruling). 綁定版 keeps its label
+    // even when identical to the canonical (1005302 vs 1003797: info/tradeBlock is not an EquipData field).
+    const key = (e: { slot: string; name: string; cash: boolean }) => `${e.slot}\u0000${e.name}\u0000${e.cash}`
+    const body = (e: EquipData) => JSON.stringify({ ...e, id: 0 })
+    const FLAG_LABEL = /^(活動版|期限|固定潛能|綁定版)(・|$)/
+    const index = loadIndexSync()
+    const canonBody = new Map(index.filter((e) => e.canonical).map((e) => [key(e), body(loadEquipSync(e.id))]))
+    const sets = new Map<string, IndexEntry[]>()
+    let identicalToCanonical = 0
+    for (const e of index) {
+      if (e.canonical) continue
+      const b = body(loadEquipSync(e.id))
+      // A non-綁定版 flag row is never body-identical to its canonical.
+      if (FLAG_LABEL.test(e.variantLabel) && e.variantLabel !== '綁定版')
+        expect(b === canonBody.get(key(e)), `${e.id}:${e.variantLabel}`).toBe(false)
+      const k = `${key(e)}\u0000${b}`
+      sets.set(k, [...(sets.get(k) ?? []), e])
+    }
+    let collapsedSets = 0
+    for (const [k, members] of sets) {
+      const what = members.map((e) => `${e.id}:${e.variantLabel}`).join(' ')
+      const flagged = members.filter((e) => FLAG_LABEL.test(e.variantLabel))
+      expect(flagged.length, what).toBe(new Set(flagged.map((e) => e.variantLabel)).size)
+      const d = loadEquipSync(members[0]!.id)
+      if (d.eventVariant || d.timeLimited || d.fixedPotential) {
+        const sameAsCanonical = k.endsWith(`\u0000${canonBody.get(key(members[0]!))}`)
+        if (sameAsCanonical) {
+          // Every member carries the canonical's own flags: all ''.
+          expect(members.filter((e) => e.variantLabel !== '').map((e) => e.id), what).toEqual([])
+          identicalToCanonical += members.length
+        } else {
+          // Every member carries the same flag label: exactly the lowest id keeps it and the rest are ''.
+          expect(flagged.map((e) => e.id), what).toEqual([Math.min(...members.map((e) => e.id))])
+          expect(members.filter((e) => e.variantLabel !== '').length, what).toBe(1)
+          if (members.length > 1) collapsedSets++
+        }
+      }
+    }
+    expect(collapsedSets).toBeGreaterThan(0)
+    expect(identicalToCanonical).toBeGreaterThan(0)
+    // Review cases: flag rows identical to the canonical (1082708 武公的手套 期限・固定潛能 vs 1082393).
+    const byId = new Map(index.map((e) => [e.id, e]))
+    for (const id of [1082708, 1012362, 1114208, 1114227, 1122086])
+      expect(byId.get(id), `${id}`).toMatchObject({ canonical: false, variantLabel: '' })
+    expect(byId.get(1005302)).toMatchObject({ canonical: false, variantLabel: '綁定版' })
   })
 
   it('test / placeholder equipment is excluded from the export (dummy, 1–3 ASCII letters, GM, Hangul, explicit ids)', () => {
@@ -269,7 +378,11 @@ describe('exported TMS v283 equipment data', () => {
     for (const name of ['烏勒斯的握力測試機', '名譽開發者', '祕密團體臨時成員'])
       expect(loadIndexSync().some((e) => e.name === name), name).toBe(true)
     expect(loadIndexSync().filter((e) => e.slot === 'Me' && /^[ -~]+$/.test(e.name)).length).toBeGreaterThanOrEqual(31)
-    for (const id of new Set((fixture as { id: number }[]).map((f) => f.id))) expect(loadEquipSync(id).id).toBe(id)
+    // Fixtures removed by an export exclusion rule (1690xxx placeholders) are skipped and counted: none today.
+    const exportExcluded = (id: number) => Math.floor(id / 1000) === 1690
+    const ids = [...new Set((fixture as { id: number }[]).map((f) => f.id))]
+    expect(ids.filter(exportExcluded)).toEqual([])
+    for (const id of ids) if (!exportExcluded(id)) expect(loadEquipSync(id).id).toBe(id)
   })
 
   it('every index entry has a non-empty name', () => {

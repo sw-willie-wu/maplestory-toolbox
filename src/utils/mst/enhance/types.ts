@@ -29,12 +29,19 @@ export interface IndexEntry {
   tuc: number
   setId: number | null
   jobs: JobGroup[] | 'all'
-  /** Exactly one entry per (slot, name, cash) group is canonical (no event / time-limited / fixed-potential variant if possible, then lowest id). */
+  /** `!cash && (canStarforce || tuc > 0 || canFlame || canExceptional)` of the EquipData (exporter-computed). */
+  enhanceable: boolean
+  /**
+   * Exactly one entry per (slot, name, cash) group is canonical: enhanceable entries first, then the fewest
+   * event / time-limited / fixed-potential flags, then lowest id.
+   */
   canonical: boolean
   /**
    * '' for canonical entries; otherwise 活動版・期限・固定潛能 parts (that order) or 綁定版; else a fallback from the first
-   * field differing from the canonical: 可上卷N次 (tuc) / Lv.N (level) / 數值不同 (base) / #<id> (anything else);
-   * '' when identical to the canonical except id (collapse in the UI). See tools/wz-export/README.md.
+   * field differing from the canonical: 可上卷N次 (tuc) / Lv.N (level) / 數值不同 (base) / #<id> (anything else).
+   * Also '' (collapse in the UI) when identical in every EquipData field except id to the canonical (every label except
+   * 綁定版, whose difference is info/tradeBlock, outside EquipData) or to a lower-id entry of the group that kept the
+   * same kind of label. See tools/wz-export/README.md.
    */
   variantLabel: string
   /** Official item category id (SearchCategory.id, categories.json); null when none applies. Same value as EquipData. */

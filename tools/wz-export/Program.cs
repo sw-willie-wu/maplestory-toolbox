@@ -107,7 +107,6 @@ static void Export(Wz_Node root, Wz_Node character, string outDir)
     var magicMismatch = new List<string>();
     var unnamed = 0;
     var excluded = new SortedDictionary<string, int>(StringComparer.Ordinal);
-    var cashExcluded = 0;
     var searchStats = new SortedDictionary<string, int>(StringComparer.Ordinal); // range / islot-fallback / none
     var unmatchedByPrefix = new SortedDictionary<string, int>(StringComparer.Ordinal);
     var specJobCounts = new SortedDictionary<int, int>();
@@ -191,8 +190,9 @@ static void Export(Wz_Node root, Wz_Node character, string outDir)
             // GM-stat items (STR/DEX/INT/LUK all ≥ 999, e.g. 維澤特帽 1002140/1003142) are excluded as well.
             var gmStats = new[] { "str", "dex", "int", "luk" }.All(k => (baseStats[k]?.GetValue<int>() ?? 0) >= 999);
             if ((gmStats ? "gm-stats" : ExcludeRule(id, name)) is { } rule) { excluded[rule] = excluded.GetValueOrDefault(rule) + 1; return; }
-            // Cash items (WZ cash = 1) are not exported at all (user decision, Task 1c).
-            if (cash) { cashExcluded++; return; }
+            // Cash items ARE exported (user decision, UI redesign §8.2: site-wide search needs them); the enhance tool
+            // filters on index enhanceable. Enhanceable = can receive any enhancement the calculator models.
+            var enhanceable = !cash && (canStarforce || tuc > 0 || canFlame || canExceptional);
             searchStats[searchHow] = searchStats.GetValueOrDefault(searchHow) + 1;
             if (searchDetail == null) { var k = $"{cat}:{id / 1000}"; unmatchedByPrefix[k] = unmatchedByPrefix.GetValueOrDefault(k) + 1; }
             if (specJob is { } sj) specJobCounts[sj] = specJobCounts.GetValueOrDefault(sj) + 1;
@@ -203,10 +203,10 @@ static void Export(Wz_Node root, Wz_Node character, string outDir)
             index.Add(new JsonObject
             {
                 ["id"] = id, ["name"] = name, ["category"] = cat, ["slot"] = slot, ["level"] = level,
-                ["cash"] = cash, ["tuc"] = tuc, ["setId"] = setId, ["jobs"] = JobsOf(reqJob),
+                ["cash"] = cash, ["enhanceable"] = enhanceable, ["tuc"] = tuc, ["setId"] = setId, ["jobs"] = JobsOf(reqJob),
                 ["searchCategory"] = searchCategory, ["searchDetail"] = searchDetail, ["specJob"] = specJob,
             });
-            variants[id] = new Variant(slot, name, cash, eventVariant, timeLimited, fixedPotential, untradeable);
+            variants[id] = new Variant(slot, name, cash, enhanceable, eventVariant, timeLimited, fixedPotential, untradeable);
         });
     }
 
@@ -218,7 +218,7 @@ static void Export(Wz_Node root, Wz_Node character, string outDir)
     }
     index.Sort((a, b) => a["id"]!.GetValue<int>().CompareTo(b["id"]!.GetValue<int>()));
     var equipById = byCategory.Values.SelectMany(m => m).ToDictionary(kv => kv.Key, kv => kv.Value);
-    var (labelCounts, fallbackCounts) = LabelVariants(index, variants, equipById);
+    var (labelCounts, fallbackCounts, collapsedSets, collapsedEntries, identicalFlagEntries) = LabelVariants(index, variants, equipById);
     WriteJson(Path.Combine(outDir, "index.json"), new JsonArray(index.ToArray<JsonNode>()));
 
     WriteJson(Path.Combine(outDir, "meta.json"), new JsonObject
@@ -250,7 +250,12 @@ static void Export(Wz_Node root, Wz_Node character, string outDir)
     Console.WriteLine("Per category: " + string.Join(", ", byCategory.Select(kv => $"{kv.Key}={kv.Value.Count}")));
     Console.WriteLine($"Items without a String name (kept in equip/, excluded from index.json): {unnamed}");
     Console.WriteLine($"Excluded test/placeholder items ({excluded.Values.Sum()}): " + string.Join(", ", excluded.Select(kv => $"{kv.Key}={kv.Value}")));
-    Console.WriteLine($"Excluded cash items (after the test/placeholder rules): {cashExcluded}");
+    Console.WriteLine($"Cash items exported: {byCategory.Values.Sum(m => m.Values.Count(e => e["cash"]!.GetValue<bool>()))} " +
+        $"({index.Count(e => e["cash"]!.GetValue<bool>())} in index.json); enhanceable in index.json: {index.Count(e => e["enhanceable"]!.GetValue<bool>())}");
+    Console.WriteLine($"1690xxx ids in WZ (all excluded): {EnumerateEquipImgs(character).Count(e => e.Id / 1000 == 1690)}");
+    var sixCats = new HashSet<string>(StringComparer.Ordinal) { "Bits", "TamingMob", "SkillSkin", "ArcaneForce", "AuthenticForce", "Jewel" };
+    Console.WriteLine($"Enhanceable index rows in Bits/TamingMob/SkillSkin/ArcaneForce/AuthenticForce/Jewel (expected 0): " +
+        $"{index.Count(e => sixCats.Contains(e["category"]!.GetValue<string>()) && e["enhanceable"]!.GetValue<bool>())}");
     Console.WriteLine("Search category: " + string.Join(", ", searchStats.Select(kv => $"{kv.Key}={kv.Value}")));
     Console.WriteLine("  no detail range, by category:id/1000: " + string.Join(", ", unmatchedByPrefix.Select(kv => $"{kv.Key}={kv.Value}")));
     Console.WriteLine("specJob: " + string.Join(", ", specJobCounts.Select(kv => $"{kv.Key}={kv.Value}")) + $" (total {specJobCounts.Values.Sum()})");
@@ -260,32 +265,54 @@ static void Export(Wz_Node root, Wz_Node character, string outDir)
         $"{index.Count(e => !e["canonical"]!.GetValue<bool>() && e["variantLabel"]!.GetValue<string>() == "")} non-canonical without label");
     Console.WriteLine("Variant labels: " + string.Join(", ", labelCounts.OrderByDescending(kv => kv.Value).Select(kv => $"{kv.Key}={kv.Value}")));
     Console.WriteLine("Fallback labels: " + string.Join(", ", fallbackCounts.Select(kv => $"{kv.Key}={kv.Value}")));
+    Console.WriteLine($"Identical-variant collapse: {collapsedEntries} entries in {collapsedSets} identical sets got '' (identical to a kept lower-id non-canonical); " +
+        $"{identicalFlagEntries} non-綁定版 flag rows identical to the canonical got ''");
+    // Grouping uses the raw String name: a trailing space makes a separate group (README).
+    var trailing = index.Where(e => { var n = e["name"]!.GetValue<string>(); return n != n.TrimEnd(); }).ToList();
+    var trimmedKeys = index.GroupBy(e => (e["slot"]!.GetValue<string>(), e["name"]!.GetValue<string>().TrimEnd(), e["cash"]!.GetValue<bool>()))
+        .Count(gr => gr.Select(e => e["name"]!.GetValue<string>()).Distinct().Count() > 1);
+    Console.WriteLine($"Names with trailing whitespace in index.json: {trailing.Count} ({trimmedKeys} groups would merge if names were trimmed)");
+    var jamo = index.Where(e => e["name"]!.GetValue<string>().Any(c => c is >= (char)0x3131 and <= (char)0x318E)).Select(e => $"{e["id"]} {e["name"]}").ToList();
+    Console.WriteLine($"Names with Hangul compatibility jamo (kept, not the hangul rule): {jamo.Count}: {string.Join(", ", jamo)}");
     Console.WriteLine("Negative reqJob: " + (negativeReqJob.Count == 0 ? "none" : string.Join(", ", negativeReqJob.Select(kv => $"{kv.Key} x{kv.Value.Count} [{string.Join(",", kv.Value)}]"))));
     Console.WriteLine($"Magic-weapon cross-check mismatches ({magicMismatch.Count}):");
     foreach (var m in magicMismatch) Console.WriteLine("  WARN " + m);
 }
 
-// Index variants: within each (slot, name, cash) group exactly one entry is canonical — the one with the fewest of
+// Index variants: within each (slot, name, cash) group exactly one entry is canonical — enhanceable entries first
+// (UI redesign §8.2: a non-enhanceable main version must not hide an enhanceable variant), then the fewest of
 // eventVariant / timeLimited / fixedPotential (normally none), ties → lowest id. exceptUpgrade is NOT used
 // (Destiny weapons carry it). Non-canonical entries get variantLabel = 活動版・期限・固定潛能 parts in that order,
 // or 綁定版 when none apply and the entry is untradeable (info/tradeBlock) while the canonical one is not.
 // Still empty → fallback from the first EquipData field that differs from the canonical (controller ruling):
 // tuc → 可上卷N次, level → Lv.N, base → 數值不同, any other field (category, jobs, flags…) → #<id>;
 // identical in every field except id → '' (the UI collapses those).
-// Returns entry count per non-empty label and per fallback kind. Mutates the index entries (adds canonical / variantLabel).
-static (Dictionary<string, int> Labels, Dictionary<string, int> Fallbacks) LabelVariants(
+// Identical-variant collapse (UI redesign §8.3): walking each group in id order, a non-canonical entry identical in every
+// EquipData field except id to a lower-id non-canonical entry that kept a label of the same kind (the same flag label,
+// or any fallback label) gets '' as well, so each identical set keeps exactly one labelled representative.
+// A 活動版/期限/固定潛能 row identical to the canonical also gets '' (those flags are EquipData fields, so the canonical
+// has the same ones; controller ruling). 綁定版 is never collapsed into the canonical (1005302 綁定版 is
+// EquipData-identical to canonical 1003797; the distinction lives in info/tradeBlock, outside EquipData).
+// Returns entry count per non-empty label, per fallback kind, the collapse stats (identical sets with ≥ 1 collapsed
+// entry, collapsed entries) and the flag rows made '' for being identical to the canonical. Mutates the index entries.
+static (Dictionary<string, int> Labels, Dictionary<string, int> Fallbacks, int CollapsedSets, int Collapsed, int IdenticalFlag) LabelVariants(
     List<JsonObject> index, Dictionary<int, Variant> variants, Dictionary<int, JsonObject> equipById)
 {
     var counts = new Dictionary<string, int>(StringComparer.Ordinal);
     var fallbacks = new Dictionary<string, int>(StringComparer.Ordinal) { ["可上卷N次"] = 0, ["Lv.N"] = 0, ["數值不同"] = 0, ["#<id>"] = 0, ["identical"] = 0 };
+    var collapsedSets = new HashSet<string>(StringComparer.Ordinal);
+    var collapsed = 0;
+    var identicalFlag = 0;
     // Cash and non-cash entries never compete (controller ruling): e.g. cash 紅鷹鋼盔 1000009 vs non-cash 1000054.
     var groups = index.GroupBy(e => { var v = variants[e["id"]!.GetValue<int>()]; return (v.Slot, v.Name, v.Cash); });
     foreach (var g in groups)
     {
-        var members = g.Select(e => (Entry: e, Id: e["id"]!.GetValue<int>())).ToList();
+        var members = g.Select(e => (Entry: e, Id: e["id"]!.GetValue<int>())).OrderBy(m => m.Id).ToList();
         int Score(int id) { var v = variants[id]; return (v.Event ? 1 : 0) + (v.TimeLimited ? 1 : 0) + (v.FixedPotential ? 1 : 0); }
-        var canonicalId = members.OrderBy(m => Score(m.Id)).ThenBy(m => m.Id).First().Id;
+        var canonicalId = members.OrderByDescending(m => variants[m.Id].Enhanceable).ThenBy(m => Score(m.Id)).ThenBy(m => m.Id).First().Id;
         var canonicalUntradeable = variants[canonicalId].Untradeable;
+        // Label kind ("flag:<label>" or "fallback") + EquipData body without id → kept representatives of this group.
+        var kept = new HashSet<string>(StringComparer.Ordinal);
         foreach (var (entry, id) in members)
         {
             var isCanonical = id == canonicalId;
@@ -299,11 +326,25 @@ static (Dictionary<string, int> Labels, Dictionary<string, int> Fallbacks) Label
                 if (v.FixedPotential) parts.Add("固定潛能");
                 if (parts.Count == 0 && v.Untradeable && !canonicalUntradeable) parts.Add("綁定版");
                 label = string.Join("・", parts);
-                if (label != "") counts[label] = counts.GetValueOrDefault(label) + 1;
+                if (label != "")
+                {
+                    var key = $"flag:{label}\u0000{BodyWithoutId(equipById[id])}";
+                    // Flag labels other than 綁定版 come from EquipData flags, so a row identical to the canonical carries the
+                    // canonical's own flags and the label would mislead (controller ruling) -> ''. 綁定版 differs only in
+                    // info/tradeBlock, which is not an EquipData field, so it keeps its label.
+                    if (label != "綁定版" && BodyWithoutId(equipById[id]) == BodyWithoutId(equipById[canonicalId])) { identicalFlag++; label = ""; }
+                    else if (!kept.Add(key)) { collapsedSets.Add($"{g.Key}\u0000{key}"); collapsed++; label = ""; }
+                    else counts[label] = counts.GetValueOrDefault(label) + 1;
+                }
                 else
                 {
                     var (kind, text) = FallbackLabel(equipById[id], equipById[canonicalId]);
-                    fallbacks[kind]++;
+                    if (kind != "identical")
+                    {
+                        var key = $"fallback\u0000{BodyWithoutId(equipById[id])}";
+                        if (!kept.Add(key)) { collapsedSets.Add($"{g.Key}\u0000{key}"); collapsed++; kind = "identical-to-kept"; text = ""; }
+                    }
+                    fallbacks[kind] = fallbacks.GetValueOrDefault(kind) + 1;
                     label = text;
                 }
             }
@@ -311,7 +352,14 @@ static (Dictionary<string, int> Labels, Dictionary<string, int> Fallbacks) Label
             entry["variantLabel"] = label;
         }
     }
-    return (counts, fallbacks);
+    return (counts, fallbacks, collapsedSets.Count, collapsed, identicalFlag);
+}
+
+static string BodyWithoutId(JsonObject e)
+{
+    var copy = (JsonObject)e.DeepClone();
+    copy.Remove("id");
+    return copy.ToJsonString(JsonOpts);
 }
 
 // First differing calc field of an entry vs its group's canonical → (kind, label); ("identical", "") when equal except id.
@@ -333,7 +381,8 @@ static (string Kind, string Label) FallbackLabel(JsonObject e, JsonObject canoni
 // Test / placeholder equipment excluded from the export (user decision, Task 1b); name-based, cash items included.
 // Returns the first matching rule, or null to keep. Checked against the KEEP list in equip-data.spec.ts
 // (測試用ESP限制器 1262001/1262018/1262022/1262060, 烏勒斯的握力測試機, 名譽開發者, 祕密團體臨時成員, English medals);
-// Explicit ids: 1932236 "2014 horse" (placeholder mount, user-confirmed).
+// Explicit ids: 1932236 "2014 horse" (placeholder mount, user-confirmed). Id range 1690000–1690999 (placeholders, checked
+// last so the earlier rule counts stay comparable).
 static string? ExcludeRule(int id, string name)
 {
     if (id is 1932236) return "explicit-id";                                                 // "2014 horse"
@@ -341,6 +390,7 @@ static string? ExcludeRule(int id, string name)
     if (name.Length is >= 1 and <= 3 && name.All(char.IsAsciiLetter)) return "ascii1-3";     // e.g. "aa" 1932565
     if (name.Contains("GM", StringComparison.Ordinal)) return "GM";                          // e.g. 1007171 楓之谷GM的帽子
     if (name.Any(c => c is >= '\uAC00' and <= '\uD7A3')) return "hangul";                    // untranslated KMS-only items
+    if (id / 1000 == 1690) return "1690xxx";                                                 // 「xx等武器/防具道具」 placeholders (UI redesign §8.1)
     return null;
 }
 
@@ -492,7 +542,8 @@ static (JsonArray Json, List<DetailRange> Ranges) LoadSearchCategories(Wz_Node r
 // (1252, 1254, 1403, 1542, 1552, 172x 阿斯特拉 …), so items in the Weapon folder without a range get a category from the
 // id prefix p = id / 10000, following how ThothSearchOption itself splits by prefix (islot is unreliable: many two-handed
 // weapons are Wp): 121–139 except 135 → OneHandSword, 140–159 → TwoHandSword, 135 / 172 → SubWeapon (detail null).
-// Remaining Weapon-folder items (1690 「xx等防具」 placeholders, 1702176) keep the islot map (pending user decision).
+// Remaining Weapon-folder items (cash weapon covers 1701–1704, non-cash 1702176; 1690xxx placeholders are excluded from
+// the export) keep the islot map.
 // Accessory-folder emblems (islot Si, 1190000–1191999) beyond the WZ Emblem range → Accessory / Emblem (derived).
 static (string? Category, string? Detail, string How) SearchCategoryOf(int id, string cat, string slot, List<DetailRange> ranges)
 {
@@ -721,7 +772,7 @@ static Dictionary<string, string> ParseArgs(string[] a)
 
 record DetailRange(string Category, string Detail, List<(int Begin, int End)> Ranges);
 
-record Variant(string Slot, string Name, bool Cash, bool Event, bool TimeLimited, bool FixedPotential, bool Untradeable);
+record Variant(string Slot, string Name, bool Cash, bool Enhanceable, bool Event, bool TimeLimited, bool FixedPotential, bool Untradeable);
 
 partial class Program
 {
@@ -750,7 +801,7 @@ partial class Program
     };
 
     // Last-resort search-category fallback for Weapon-folder items outside every range and every id-prefix rule
-    // (v283: 1690xxx placeholders, 1702176; see SearchCategoryOf).
+    // (v283: cash weapon covers 1701–1704 and non-cash 1702176; see SearchCategoryOf).
     static readonly Dictionary<string, string> WeaponFolderIslotCategory = new(StringComparer.Ordinal)
     {
         ["Wp"] = "OneHandSword", ["WpSi"] = "TwoHandSword", ["Si"] = "SubWeapon", ["Cp"] = "Armor",

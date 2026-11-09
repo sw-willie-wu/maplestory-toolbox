@@ -3,6 +3,7 @@
 // Usage: NEXON_API_KEY=... node tools/fixtures/fetch-nexon.mjs
 // The key is read from the environment only and never written anywhere.
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs'
+import process from 'node:process'
 import { itemIdFromIconUrl } from '../../src/utils/mst/icon.ts'
 
 const root = new URL('../../', import.meta.url)

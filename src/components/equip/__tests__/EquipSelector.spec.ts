@@ -11,6 +11,7 @@ function entry(p: Partial<IndexEntry> & Pick<IndexEntry, 'id' | 'name'>): IndexE
     slot: 'Cp',
     level: 100,
     cash: false,
+    enhanceable: true,
     tuc: 7,
     setId: null,
     jobs: 'all',

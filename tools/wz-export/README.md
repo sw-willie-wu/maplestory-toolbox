@@ -44,7 +44,7 @@ TMS v283 是 KMST1125 分割格式（`Data/<套件>/<套件>.wz` + `_000.wz…` 
 | 檔案 | 內容 |
 |---|---|
 | `meta.json` | `{ dataVersion: "TMS v283", exportedAt, client: "TMS", version: 283 }` |
-| `index.json` | `IndexEntry[]`（`src/utils/mst/enhance/types.ts`），依 id 排序；含 `canonical` / `variantLabel`（見「同名變體」） |
+| `index.json` | `IndexEntry[]`（`src/utils/mst/enhance/types.ts`），依 id 排序；含 `enhanceable`（見下）與 `canonical` / `variantLabel`（見「同名變體」） |
 | `equip/<category>.json` | `Record<id, EquipData>`，category = `Character/` 子資料夾名 |
 | `sets.json` | `Record<setId, SetInfo>`：`{ name, completeCount, effects, jokerPossible, zeroWeaponJokerPossible }`（`Etc/SetItemInfo.img`；`effects` 見下方「套裝效果」） |
 | `categories.json` | `SearchCategory[]`：官方道具分類（`Item/ThothSearchOption.img`，見下方「官方道具分類」） |
@@ -53,11 +53,18 @@ TMS v283 是 KMST1125 分割格式（`Data/<套件>/<套件>.wz` + `_000.wz…` 
 | `potential-options.json` | `Item/ItemOption.img`：`{ id, grade, text, optionType?, reqLevel?, weight?, levels: { <潛能等級>: { <stat>: value } } }[]`；`grade = id / 10000`（原始值，語意由 Task 3 決定）；`text` 為 WZ 樣板（例：`STR +#incSTRr%`） |
 
 匯出範圍：`Character/*/` 下 id 介於 1,000,000–1,999,999、且有 `info` 節點的 img（Face/Hair 等非裝備 id 自然排除）。
-**現金道具（`cash == 1`）完全不匯出**（使用者決定，Task 1c；不在 `equip/`、也不在 `index.json`）。
-v283：WZ 32,090 件，排除測試/佔位道具 305 件、再排除現金道具 **15,032** 件後匯出 **16,753** 件、21 個 category（`PetEquip` 全為現金 → 不再有 `equip/PetEquip.json`）。其中 2,243 件在 `String/Eqp.img` 沒有名稱（`name` 為空字串）：**保留在 `equip/<category>.json`，但不列入 `index.json`**（index **14,510** 件）。
-非現金空殼道具（Lv0、tuc 0、無基礎屬性）**保留**（使用者決定：預設保留）。
+**現金道具（`cash == 1`）照常匯出**（使用者決定，UI 重新設計 §8.2：未來 Navbar 全站搜尋要搜得到全部裝備，含點裝；撤銷 Task 1c 的排除）。
+點裝和一般裝備放在同一個 `equip/<category>.json`（`PetEquip` 全為點裝 → `equip/PetEquip.json`）。強化計算機只顯示 `!cash && enhanceable`，過濾在 `useEquipData` 層，不在匯出。
+v283：WZ 32,090 件，排除測試/佔位道具 **377** 件（含 1690xxx 72 件，見「排除的測試/佔位道具」）後匯出 **31,713** 件、22 個 category；
+其中點裝 **15,032** 件、非點裝 **16,681** 件。2,402 件在 `String/Eqp.img` 沒有名稱（`name` 為空字串）：**保留在 `equip/<category>.json`，但不列入 `index.json`**
+（index **29,311** 件：點裝 14,873、非點裝 14,438）。非現金空殼道具（Lv0、tuc 0、無基礎屬性）**保留**（使用者決定：預設保留）。
 
-大小（v283，Task 1c 後）：`index.json` 3.50 MB，gzip **199,908 bytes**；`public/data/tms-v283` 總計 **13 MB**（`du -sh`；`equip/` 8.8 MB）。
+**`enhanceable`**（只在 `IndexEntry`）＝ `!cash && (canStarforce || tuc > 0 || canFlame || canExceptional)`，依該件 EquipData 計算。
+只能洗潛能的裝備也算不可強化（使用者決定）。v283：index 中 **10,910** 件 enhanceable（含無名稱者在內的全部匯出非點裝：11,072 件）。
+原本用分類排除的 6 類（Bits、TamingMob、SkillSkin、ArcaneForce、AuthenticForce、Jewel）中 enhanceable 的筆數 = **0**（匯出程式印出、`equip-data.spec.ts` 檢查），所以工具不需另做分類排除。
+
+大小（v283，UI 重新設計 Task 1 後）：`index.json` 7.47 MB，gzip **409,874 bytes**（門檻 1.5 MB，`equip-data.spec.ts` 檢查；超過時才拆工具專用 index）；
+`public/data/tms-v283` 總計 **24 MB**（`du -sh`；`equip/` 17 MB）。
 
 ## 欄位對照
 
@@ -73,20 +80,20 @@ v283：WZ 32,090 件，排除測試/佔位道具 305 件、再排除現金道具
 | `jobs` | `reqJob` bitmask：0/缺省 → `'all'`；1 warrior、2 magician、4 bowman、8 thief、16 pirate；負值 → `'all'`（同樣有 `"reqJob "` 變體） | 推導 |
 | `base` | 見下方屬性對照 | WZ |
 | `tuc` | `tuc`（可上卷次數，缺省 0） | WZ |
-| `cash` | `cash == 1`；Task 1c 起現金道具不匯出，匯出資料一律 `false` | WZ |
+| `cash` | `cash == 1`（匯出 15,032 件） | WZ |
 | `setId` | `setItemID`（缺省/0 → `null`） | WZ |
 | `bossReward` | **`bossReward == 1`**（與 KMS 同名；v283 共 1,725 件） | WZ |
 | `isWeapon` | `category === 'Weapon'` 且 id 前 3 碼 ≠ 135 | 推導 |
 | `isMagicWeapon` | `isWeapon` 且 id 前 4 碼 ∈ {1212, 1252, **1254**, 1262, 1282, 1372, 1382, 1552} | 推導 |
 | `canStarforce` | `(tuc > 0 || 阿斯特拉副手) && !cash`；阿斯特拉副手 = id 前 3 碼 172 且 `islot == "Si"`（114 件，見下方「172xxxx 阿斯特拉副手」）。WZ 沒有已確認的禁止星力旗標；匯出共 10,063 件（排除測試道具前 10,072 = 9,958 + 114） | 推導 |
-| `canFlame` | 非現金，且 category ∈ {Weapon（非 135x）, Cap, Coat, Longcoat, Pants, Shoes, Glove, Cape}，或 Accessory 且 `islot` ∈ {Af 臉, Ay 眼, Ae 耳, Pe 墜飾, Be 腰帶, Po 口袋}；其餘（戒指、肩膀、勳章、徽章、心臟、圖騰、Shield、拼圖類…）false。WZ 沒有星火旗標。**逐 id 覆寫**（`FlameOverrides`）：1143471 不朽的遺產、1202287 古代石板複製品 → true（見下方「星火覆寫」）；匯出共 10,666 件 | KMS-estimate |
+| `canFlame` | 非現金，且 category ∈ {Weapon（非 135x）, Cap, Coat, Longcoat, Pants, Shoes, Glove, Cape}，或 Accessory 且 `islot` ∈ {Af 臉, Ay 眼, Ae 耳, Pe 墜飾, Be 腰帶, Po 口袋}；其餘（戒指、肩膀、勳章、徽章、心臟、圖騰、Shield、拼圖類…）false。WZ 沒有星火旗標。**逐 id 覆寫**（`FlameOverrides`）：1143471 不朽的遺產、1202287 古代石板複製品 → true（見下方「星火覆寫」）；匯出共 10,594 件（1690xxx 排除前 10,666） | KMS-estimate |
 | `flameBoss` | 星火用 BOSS 規則（4 行、覺醒 +2 階）與否：= `bossReward`，只有 1202287 古代石板複製品覆寫為 false。計算模組的星火規則一律讀 `flameBoss`，`bossReward` 保留給其他用途 | 推導 |
 | `canExceptional` | `exceptionalMax > 0` | 推導 |
 | `exceptionalMax` | `Etuc`（卓越強化次數，缺省 0；v283 只有 6 件 > 0，見下） | WZ |
 | `superior` | `superiorEqp == 1`（尊貴裝備，星力表不同；57 件） | WZ |
 | `blockGoldHammer` | `blockGoldHammer == 1`（禁止黃金鐵鎚；16 件） | WZ |
-| `tradeBlock` | `tradeBlock == 1` 或 `equipTradeBlock == 1`（匯出 10,988 件） | WZ |
-| `timeLimited` | `timeLimited == 1`（WZ 也有值 0 的 625 件 → false；匯出 1,180 件） | WZ |
+| `tradeBlock` | `tradeBlock == 1` 或 `equipTradeBlock == 1`（匯出 11,039 件，非點裝 10,988） | WZ |
+| `timeLimited` | `timeLimited == 1`（WZ 也有值 0 的 625 件 → false；匯出 1,202 件，非點裝 1,180） | WZ |
 | `fixedPotential` | `fixedPotential == 1`（644 件） | WZ |
 | `eventVariant` | `exceptTransmission == 1 || undecomposable == 1`（950 件） | WZ |
 | `accountShare` | `accountSharable == 1 || sharableOnce == 1`（414 件） | WZ |
@@ -108,19 +115,22 @@ v283：WZ 32,090 件，排除測試/佔位道具 305 件、再排除現金道具
    v283 的 `SubWeapon/AranPendulum`（狂狼玉墜）與 `CaptainSight`（瞄準器）都寫 1352910–1352919（WZ 資料錯誤；這段實際是「鷹眼」瞄準器）→ 取 CaptainSight；真正的狂狼錘 1352930–1352939 不在任何範圍（走 prefix-fallback → SubWeapon）。
    `SubWeapon/Bracelet` 1354000–1354099 包含 WeaponBelt / Norigae / HexSeeker 的較窄範圍 → 取較窄者。
 2. **prefix-fallback**：沒有範圍、且在 `Character/Weapon` 資料夾 → 依 id 前綴 p = id / 10000（與 ThothSearchOption 本身依前綴分單/雙手一致；**不用 islot**：許多雙手武器的 islot 是 Wp，例如 1542 刀、1552 扇、1403 拳套）：121–139（135 除外）→ OneHandSword、140–159 → TwoHandSword（含 1502/1512/1562/1572）、135 / 172 → SubWeapon；`searchDetail = null`。ThothSearchOption 沒收錄許多新武器類型。
-3. **islot-fallback**：Weapon 資料夾中不符合上述前綴者（v283 只有 1690xxx「xx等防具」佔位道具 72 件與 1702176 鬼焰刀*30天）→ 依 `islot`：Wp → OneHandSword、WpSi → TwoHandSword、Si → SubWeapon、Cp → Armor，`searchDetail = null`（1690 的歸類待使用者決定）。
+3. **islot-fallback**：Weapon 資料夾中不符合上述前綴者（v283：點裝武器外觀 1701–1704 等 1,661 件，非點裝只有 1702176 鬼焰刀*30天；1690xxx 佔位道具已排除）→ 依 `islot`：Wp → OneHandSword、WpSi → TwoHandSword、Si → SubWeapon、Cp → Armor，`searchDetail = null`。
+   其他 islot 的 Weapon 資料夾點裝（1602000–1602007 技能效果 islot Ri、5 件 1702xxx islot MaPn，共 13 件）→ 兩者皆 `null`（`isWeapon` 仍為 true；測試只要求非點裝武器有分類）。
 4. **emblem-fallback**（推導）：`Character/Accessory` 資料夾、`islot = Si`、id 1190000–1191999 且沒有範圍 → `Accessory` / `Emblem`。WZ 的 Emblem 範圍只到 1190199（PowerSource 1190200–1190299），之後的徽章（1190300+、1191xxx）沒有範圍。只限 Accessory 資料夾。
 5. 其他 → 兩者皆 `null`。
 
 `LoadSearchCategories` 檢查每個 ItemDetailCategory 恰好配對一次（重複或未配對 → 匯出失敗）。
 
-件數（v283，匯出的 16,753 件非現金道具）：range **12,726**、prefix-fallback **770**、islot-fallback **73**、emblem-fallback **102**、none **3,082**（index.json：12,569 / 763 / 73 / 102 / 1,003）。
-大分類件數（匯出全部 / index.json）：Armor 3,944 / 3,880、Accessory 3,273 / 3,264、OneHandSword 2,652 / 2,602、TwoHandSword 2,865 / 2,824、SubWeapon 569 / 569、Etc 368 / 368、無 3,082 / 1,003。
+件數（v283，匯出的 31,713 件，含點裝）：range **26,000**、prefix-fallback **770**、islot-fallback **1,662**、emblem-fallback **102**、none **3,179**。
+大分類件數（匯出全部 / 匯出非點裝 / index.json）：Armor 14,485 / 3,895 / 14,324、Accessory 5,141 / 3,273 / 5,121、OneHandSword 4,221 / 2,629 / 4,170、
+TwoHandSword 2,939 / 2,865 / 2,895、SubWeapon 569 / 569 / 569、Etc 1,179 / 368 / 1,174、無 3,179 / 3,082 / 1,058。
 沒有範圍者（category:id/1000）：
-- Weapon（prefix / islot fallback）：1215=40、1252=97、1254=77、1352=92、1353=32、1354=13、1390=5、1392=2、1403=43、1502=11、1512=11、1542=103、1552=104、1562=13、1572=13、1690=72、1702=1、1720–1725 阿斯特拉=114。
+- Weapon（prefix / islot fallback）：1215=40、1252=97、1254=77、1352=92、1353=32、1354=13、1390=5、1392=2、1403=43、1502=11、1512=11、1542=103、1552=104、1562=13、1572=13、1720–1725 阿斯特拉=114；
+  點裝（islot fallback，或 islot Ri/MaPn 時無分類）：1602=8、1701=1、1702=838（含非點裝 1702176）、1703=825、1704=3。
 - Accessory（emblem fallback）：1190=90、1191=12。
-- 無分類：TamingMob 2,141（1902/1912/1930/1932/1933/1939/1983/1984/1992）、Bits 715、Totem 203、ArcaneForce 7、AuthenticForce 8、SkillSkin 7、Jewel 1。
-- `isWeapon` 的裝備全部有 `searchCategory`（`equip-data.spec.ts` 檢查）。
+- 無分類：TamingMob 2,219（1902/1912/1930/1932/1933/1939/1983/1984/1992，含點裝）、Bits 715、Totem 203、ArcaneForce 7、AuthenticForce 8、SkillSkin 7、Jewel 1、PetEquip 1812=6。
+- 非點裝的 `isWeapon` 裝備全部有 `searchCategory`（`equip-data.spec.ts` 檢查）。
 
 ### 特殊職業限制（`specJob`、`jobs.json`）
 
@@ -155,10 +165,15 @@ v283：WZ 32,090 件，排除測試/佔位道具 305 件、再排除現金道具
 | 名稱含韓文（U+AC00–U+D7A3，未翻譯的 KMS 專屬內容） | 282 | 含韓文共 288 件，其中 6 件已由 GM 規則排除 |
 | 明確 id：1932236 "2014 horse"（使用者確認的佔位坐騎） | 1 | — |
 | STR/DEX/INT/LUK 全部 ≥ 999 的 GM 數值道具 | 2 | 1002140、1003142 維澤特帽 |
-| 合計 | **305** | | fixture 無任何一件被排除 |
+| id 1690000–1690999（「xx等武器/防具道具」佔位道具，使用者決定；UI 重新設計 §8.1） | 72 | WZ 共 73 件，1690206 戰國時代武器dummy 已由 dummy 規則排除；放在最後以免改變前面規則的件數 |
+| 合計 | **377** | | fixture 無任何一件被排除（`equip-data.spec.ts` 列出被排除的 fixture：0 件） |
 
 **保留**（名稱像測試但是真實道具）：測試用ESP限制器 1262001/1262018/1262022/1262060（凱內西斯初始武器）、烏勒斯的握力測試機、名譽開發者、
 祕密團體臨時成員、英文名勳章（31 件）。`equip-data.spec.ts` 檢查以上兩份清單。
+
+**Hangul 相容字母（U+3131–U+318E）不算韓文規則**：韓文規則只看完整音節 U+AC00–U+D7A3。v283 有 **14** 件名稱用相容字母畫表情的點裝**保留**
+（匯出程式會列出）：1005886 ㅁ 帽子、1005887 ㅇ 帽子、1005888 ㅍ 帽子、1012427–1012431 ㅎㅂㅎ/ㅎㅅㅎ/ㅎㅇㅎ/ㅎㅈㅎ/ㅎㅗㅎ 臉部裝飾、
+1012592–1012597 ㅇㅂㅇ/ㅇ_ㅇ/ㅇㅅㅇ/ㅅㅂㅅ/ㅅ_ㅅ/ㅅ ㅅ 臉型裝飾。
 
 ### 172xxxx 阿斯特拉副手（`canStarforce` 例外）
 
@@ -182,8 +197,10 @@ id 前 3 碼 = 172 且 `islot = Si`（不含上述 15 件阿斯特拉盾，它�
 
 ### 同名變體（`index.json` 的 `canonical` / `variantLabel`）
 
-以 index.json（有名稱的裝備）的 `(slot, name, cash)` 分組（controller 裁定；Task 1c 起現金道具不匯出，實際上只剩非現金組，例：紅鷹鋼盔 1000054 canonical、現金 1000009 不存在）。空殼道具（非現金、Lv0、tuc 0、無基礎屬性）**保留**（使用者決定；fixture 1122334、1143384、1122215 屬此類），照一般道具處理：
-- **canonical**：每組恰好 1 件。取 `eventVariant` / `timeLimited` / `fixedPotential` 成立數最少者（通常是 0 個），同分取最小 id。
+以 index.json（有名稱的裝備）的 `(slot, name, cash)` 分組（controller 裁定；點裝與非點裝永不同組，例：非點裝紅鷹鋼盔 1000054 與點裝 1000009 各自是 canonical）。空殼道具（非現金、Lv0、tuc 0、無基礎屬性）**保留**（使用者決定；fixture 1122334、1143384、1122215 屬此類），照一般道具處理：
+- **canonical**：每組恰好 1 件。**先取 `enhanceable`**（UI 重新設計 §8.2：避免不可強化的主版本把可強化的變體藏起來；組內唯一可強化的是活動／期限版時，它就是 canonical），
+  再取 `eventVariant` / `timeLimited` / `fixedPotential` 成立數最少者（通常是 0 個），同分取最小 id。
+  v283 只改變 1 組：凱撒戒指（Ri）1112751（tuc 0、不可強化）→ 1112779（tuc 2）成為 canonical，1112751 變成 `可上卷0次`。點裝組全部不可強化，不受影響。
   不用 `exceptUpgrade`（命運武器也帶這個旗標）。不重複的裝備一律 canonical。
 - **variantLabel**：canonical 為 `''`；其他依序串接（以「・」連接）：活動版（`eventVariant`）、期限（`timeLimited`）、固定潛能（`fixedPotential`）；
   三者皆無、且該件 WZ `info/tradeBlock == 1` 而 canonical 沒有 → 綁定版。
@@ -192,12 +209,24 @@ id 前 3 碼 = 172 且 `islot = Si`（不含上述 15 件阿斯特拉盾，它�
 - 例（高貴的戰士頭盔）：1003797 canonical `''`；1005302 `綁定版`；1005567 `活動版`；1005196 `活動版・期限`；1006425 `活動版・期限・固定潛能`。
 - **後備標籤**（controller 裁定）：上述規則仍為空時，依與 canonical 第一個不同的欄位：`tuc` →「可上卷N次」（N = 自己的 tuc）、`level` →「Lv.N」、`base` →「數值不同」、其他任何 EquipData 欄位（category、jobs、setId、cash、旗標…）→「#<id>」；除 id 外全部相同 → `''`（UI 合併）。
   例：1000068 神鳴的帽子 `可上卷8次`（vs 1000064）、1002509 真‧楓葉頭盔 `Lv.8`、1002872 麋鹿角 `數值不同`、1012309 血腥面具 `#1012309`、1001059 戰士覺醒套裝帽子 `''`。
+- **完全相同變體收合**（UI 重新設計 §8.3）：組內依 id 由小到大，非 canonical 條目若與**組內 id 較小、已保留標籤且標籤種類相同**的非 canonical 條目
+  除 id 外 EquipData 完全相同 → `''`（UI 收合）；每組相同內容只留 id 最小的一筆有標籤代表。標籤種類：同一個旗標標籤（`活動版`、`綁定版`…），或任一後備標籤
+  （`#<id>` 每筆不同，所以以「後備」整類比對）。`活動版` / `期限` / `固定潛能` 條目若與 canonical 除 id 外 EquipData 完全相同 → `''`（這些旗標是 EquipData 欄位，canonical 帶著同樣的旗標，
+  標籤會誤導；controller 裁定。例：1082708 武公的手套 原「期限・固定潛能」vs canonical 1082393）。只有 `綁定版` 與 canonical 相同時**保留**：
+  1005302 `綁定版` 的 EquipData 與 canonical 1003797 完全相同（差別在 `info/tradeBlock`，不是 EquipData 欄位）。
+  例（麋鹿的紅鼻子）：1012018/1012019/1012020 三件除 id 外相同的期限版 → 1012018 `期限`、1012019 與 1012020 `''`。
 
-件數（v283，Task 1c 後）：index 14,510 件、11,369 組（1,791 組有重複，共 4,932 件）。canonical **11,369**；有標籤 **2,864**：
-- 旗標標籤 2,003：綁定版 1,080、期限 324、活動版・固定潛能 215、活動版 202、活動版・期限・固定潛能 120、固定潛能 41、活動版・期限 15、期限・固定潛能 6。
-- 後備標籤 861：可上卷N次 115、Lv.N 216、數值不同 276、#<id> 254。
-- 非 canonical 且標籤為空 **277**（除 id 外與 canonical 完全相同）。
-- 另有 266 組沒有「乾淨」版本，canonical 本身就是活動/期限/固定潛能版。
+件數（v283，UI 重新設計 Task 1 後，含點裝）：index 29,311 件、25,183 組（2,578 組有重複，共 6,706 件）。canonical **25,183**；有標籤 **2,938**：
+- 旗標標籤 1,841：綁定版 1,001、期限 295、活動版・固定潛能 202、活動版 191、活動版・期限・固定潛能 120、固定潛能 16、活動版・期限 15、期限・固定潛能 1。
+- 後備標籤 1,097：可上卷N次 117、Lv.N 218、數值不同 321、#<id> 441。
+- 非 canonical 且標籤為空 **1,190**：除 id 外與 canonical 完全相同 1,032（後備路徑 992、非綁定版旗標 40）；完全相同變體收合 **158 筆、139 組**（旗標 129、後備 29）。
+  與 Task 1c 的非點裝資料相比，181 筆原有標籤變成 `''`（綁定版 82、期限 33、固定潛能 25、活動版・固定潛能 13、活動版 11、Lv.N 6、期限・固定潛能 5、#<id> 5、可上卷N次 1）。
+- 另有 266 組（有重複者）沒有「乾淨」版本，canonical 本身就是活動/期限/固定潛能版。
+
+**名稱尾端空白會分成不同組**：分組用 `String/Eqp.img` 的原始名稱，不 trim。v283 index 有 **260** 件名稱帶尾端空白（`\r\n` 143、半形空白 61、
+多個半形空白 20、`\n` 18、全形空白 15、其他 3；非點裝 70 件），其中 **15** 組（非點裝 8 組）與不帶空白的同名組只差尾端空白而分開，
+例：楓葉手套 1082252/1082439（`"楓葉手套 "`）與 1082440/1082441、阿貝羅 1532011（`"阿貝羅 "`）與 1532084 各自有 canonical。
+目前維持原樣（匯出程式會印出件數）；UI 若要合併需在顯示/搜尋層 trim。
 
 屬性對照（`info` 鍵 → `Stats` 鍵，值 0 省略）：`incSTR→str`、`incDEX→dex`、`incINT→int`、`incLUK→luk`、`incMHP→maxHp`、
 `incMMP→maxMp`、`incPAD→att`、`incMAD→matt`、`incPDD→def`、`incSpeed→speed`、`incJump→jump`、`bdR→bossDamage`、`imdR→ignoreDef`、
@@ -236,5 +265,5 @@ id 前 3 碼 = 172 且 `islot = Si`（不含上述 15 件阿斯特拉盾，它�
 - 加入後仍不一致 46 件，皆為特殊/測試/現金道具，維持前綴規則：
   - 魔法前綴但 MAD ≤ PAD：1212097 封印露塔必思魔法克魯 (90/90)、1252125 柔弱樹枝 (15/15)、1282021 純手工護腕 (PAD 15/MAD 0)、1382144 (無名, 1/0)、1382261 牧童枴杖 (100/0)
   - 非魔法前綴但 MAD > PAD：1292037 獅子精神<仙扇>（虎影仙扇，物理職業）、1302027 綠色雨傘、1332053 野外燒烤串、
-    1690000–1690014 / 1690200–1690207 / 1690329 / 1690332（「xx等武器道具」等 dummy，PAD 15/MAD 23，共 24 件）、
+    1690000–1690014 / 1690200–1690207 / 1690329 / 1690332（「xx等武器道具」等 dummy，PAD 15/MAD 23，共 24 件；交叉檢查在排除規則之前執行，這些已不匯出）、
     1702493 黑暗之槌、1703408 強化咖波雨傘、1722300–1722302 / 1723800–1723802 / 1724000–1724002 / 1724400–1724402（阿斯特拉系列，PAD 0/MAD 7，共 12 件）
