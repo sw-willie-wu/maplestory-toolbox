@@ -12,6 +12,8 @@ export interface ExceptionalRules {
   successRate?(level: number): number
   /** Meso cost of the attempt from `level` to `level + 1`. */
   cost?(level: number): number
+  /** 卓越鐵鎚 consumed per attempt (single-hammer mode; the two-hammer option is not modelled). */
+  hammerPerAttempt?: number
   /** Source of successRate/cost when it differs from the stats source. */
   attemptSource?: Sourced
 }
@@ -55,6 +57,7 @@ export const EXCEPTIONAL: (ExceptionalRules & Sourced) | null = {
   },
   successRate: (level) => RATE[level] ?? 0,
   cost: (level) => COST[level] ?? 0,
+  hammerPerAttempt: 1, // 卓越鐵鎚 (boss drop by slot); GMS, TMS unverified (KMS-estimate / 推測)
   attemptSource: {
     source: 'KMS-estimate',
     ref: 'GMS values: https://maplestorywiki.net/w/Exceptional_Enhancement (fetched 2026-11-09); TMS not verified',
