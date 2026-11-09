@@ -34,3 +34,5 @@ old/
 tools/wz-export/lib/
 tools/wz-export/bin/
 tools/wz-export/obj/
+
+.playwright-mcp/
