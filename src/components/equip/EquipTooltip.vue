@@ -1,26 +1,48 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
-import { iconUrl } from '@/utils/mst/icon'
+import { computed } from 'vue'
+import ItemIcon from './ItemIcon.vue'
 import type { EnhanceState, EnhanceTab, EquipBreakdown } from '@/utils/mst/enhance/equip'
 import type { EquipData, JobGroup, SetInfo, StatKey, Stats } from '@/utils/mst/enhance/types'
 import type { TooltipSummary } from './summary'
 
 const props = withDefaults(
   defineProps<{
-    equip: EquipData
-    breakdown: EquipBreakdown
-    state: EnhanceState
-    summary: TooltipSummary
-    locked: ReadonlySet<EnhanceTab>
-    setInfo: SetInfo | null
+    /** Optional only for `placeholder` (no equip selected yet). */
+    equip?: EquipData | null
+    breakdown?: EquipBreakdown | null
+    state?: EnhanceState | null
+    summary?: TooltipSummary | null
+    locked?: ReadonlySet<EnhanceTab>
+    setInfo?: SetInfo | null
     /** useEquipData().jobName(equip.specJob) */
     specJob?: { name: string; guess: boolean } | null
-    /** Category labels shown next to the icon (e.g. 飾品 / 戒指). */
+    /** Category labels shown next to the icon: [大分類, 細分類] (e.g. 飾品 / 戒指). */
     tags?: string[]
     compact?: boolean
+    /** Empty tooltip shown before an equip is selected. */
+    placeholder?: boolean
   }>(),
-  { specJob: null, tags: () => [], compact: false }
+  {
+    equip: null,
+    breakdown: null,
+    state: null,
+    summary: null,
+    locked: () => new Set<EnhanceTab>(),
+    setInfo: null,
+    specJob: null,
+    tags: () => [],
+    compact: false,
+    placeholder: false
+  }
 )
+
+/** Everything needed to render a real equip; null → placeholder (no equip selected yet). Keep the template's root
+ * a single v-if/v-else element (no root comment) so attrs/classes fall through. */
+const d = computed(() => {
+  const { equip, breakdown, state, summary } = props
+  if (props.placeholder || !equip || !breakdown || !state || !summary) return null
+  return { equip, breakdown, state, summary }
+})
 
 /** Display order and labels (levelReduce is shown on the 要求等級 line instead). */
 const STAT_LINES: { key: StatKey; label: string; pct?: boolean }[] = [
@@ -51,6 +73,9 @@ const JOB_NAMES: Record<JobGroup, string> = {
   pirate: '海盜'
 }
 
+/** Grade badge letter as in game (特殊 R / 稀有 E / 罕見 U / 傳說 L). */
+const GRADE_BADGE: Record<string, string> = { 特殊: 'R', 稀有: 'E', 罕見: 'U', 傳說: 'L' }
+
 /** Parts after the base, in tooltip order; class = colour (sf 星力 / sc 卷軸 / fl 星火 / ex 卓越). */
 const PARTS = [
   { part: 'starforce', cls: 'sf' },
@@ -71,7 +96,8 @@ interface Line {
 }
 
 const lines = computed<Line[]>(() => {
-  const b = props.breakdown
+  const b = d.value?.breakdown
+  if (!b) return []
   const out: Line[] = []
   for (const { key, label, pct } of STAT_LINES) {
     const parts = PARTS.filter(({ part }) => part !== 'exceptional' || !b.exceptionalNoData)
@@ -85,19 +111,23 @@ const lines = computed<Line[]>(() => {
   return out
 })
 
-const levelReduce = computed(() => val(props.breakdown.total, 'levelReduce'))
-const jobLabel = computed(() =>
-  props.equip.jobs === 'all' ? '共用' : props.equip.jobs.map((j) => JOB_NAMES[j]).join('、')
-)
+const levelReduce = computed(() => (d.value ? val(d.value.breakdown.total, 'levelReduce') : 0))
+const jobLabel = computed(() => {
+  const jobs = d.value?.equip.jobs
+  if (!jobs) return ''
+  return jobs === 'all' ? '共用' : jobs.map((j) => JOB_NAMES[j]).join('、')
+})
 
 /** Stars in rows of 15, groups of 5 (as in game). */
 const starRows = computed(() => {
   const rows: boolean[][][] = []
-  for (let r = 0; r < props.summary.maxStar; r += 15) {
+  if (!d.value) return rows
+  const { star, maxStar } = d.value.summary
+  for (let r = 0; r < maxStar; r += 15) {
     const groups: boolean[][] = []
-    for (let g = r; g < Math.min(r + 15, props.summary.maxStar); g += 5) {
+    for (let g = r; g < Math.min(r + 15, maxStar); g += 5) {
       const group: boolean[] = []
-      for (let i = g; i < Math.min(g + 5, props.summary.maxStar); i++) group.push(i < props.summary.star)
+      for (let i = g; i < Math.min(g + 5, maxStar); i++) group.push(i < star)
       groups.push(group)
     }
     rows.push(groups)
@@ -105,157 +135,144 @@ const starRows = computed(() => {
   return rows
 })
 
-// Icon: placeholder on error, or when the CDN answered with its empty image (unknown code → 308 → empty_img.png,
-// which is 256×256; real item icons are ~30–40px).
-const EMPTY_IMG_SIZE = 256
-const iconFailed = ref(false)
-watch(
-  () => props.equip.id,
-  () => (iconFailed.value = false)
-)
-function onIconLoad(e: Event) {
-  const img = e.target as HTMLImageElement
-  const w = img.naturalWidth
-  const h = img.naturalHeight
-  if ((w <= 1 && h <= 1) || (w === EMPTY_IMG_SIZE && h === EMPTY_IMG_SIZE)) iconFailed.value = true
-}
-
-const flameCount = computed(() => props.state.flame.length)
-const potentials = computed(() =>
-  [
-    { title: '潛在能力', pick: props.state.potential },
-    { title: '附加潛在能力', pick: props.state.additional }
-  ].filter((p) => p.pick.grade !== null)
-)
+const flameCount = computed(() => d.value?.state.flame.length ?? 0)
+const potentials = computed(() => {
+  const s = d.value?.state
+  if (!s) return []
+  return [
+    { title: '潛在能力', pick: s.potential },
+    { title: '附加潛在能力', pick: s.additional }
+  ]
+    .filter((p) => p.pick.grade !== null)
+    .map((p) => ({
+      title: p.title,
+      grade: p.pick.grade as string,
+      badge: GRADE_BADGE[p.pick.grade as string] ?? '',
+      lines: p.pick.lines.filter((x): x is string => x !== null)
+    }))
+})
 </script>
 
 <template>
-  <div class="equip-tooltip" :class="{ compact }">
+  <div v-if="!d" class="equip-tooltip placeholder" :class="{ compact }" data-test="tooltip-placeholder">
+    <div class="top">
+      <div class="icon-frame" data-test="tt-icon"><ItemIcon :item-id="null" :size="compact ? 30 : 52" /></div>
+      <div class="ph-text">請選擇裝備</div>
+    </div>
+  </div>
+
+  <div v-else class="equip-tooltip" :class="{ compact }">
     <template v-if="!compact">
-      <div v-if="summary.maxStar > 0" class="stars" data-test="stars">
+      <div v-if="d.summary.maxStar > 0" class="stars" data-test="stars">
         <div v-for="(row, r) in starRows" :key="r" class="star-row">
-          <span v-for="(group, g) in row" :key="g" class="star-group">
-            <span v-for="(lit, i) in group" :key="i" class="star" :class="{ lit }">★</span>
-          </span>
+          <span v-for="(group, g) in row" :key="g" class="star-group"><span v-for="(lit, i) in group" :key="i"
+              class="star" :class="{ lit }">★</span></span>
         </div>
       </div>
-      <div class="equip-name">{{ equip.name }}</div>
-      <div v-if="equip.tradeBlock" class="trade">無法交換</div>
+      <div class="equip-name">{{ d.equip.name }}</div>
+      <div v-if="d.equip.tradeBlock" class="trade">無法交換</div>
 
-      <div class="head">
-        <div class="icon-box">
-          <img v-if="!iconFailed" class="equip-icon" :src="iconUrl(equip.id)" :alt="equip.name" @error="iconFailed = true"
-            @load="onIconLoad" />
-          <span v-else class="icon-placeholder" data-test="icon-placeholder">?</span>
-        </div>
-        <div class="tags">
-          <span v-for="t in tags" :key="t" class="tag">{{ t }}</span>
-        </div>
-      </div>
-
-      <div class="req">
-        <div><span class="req-label">裝備職業</span>{{ jobLabel }}</div>
-        <div v-if="specJob" data-test="spec-job">
-          <span class="req-label">限定職業</span>{{ specJob.name }}{{ specJob.guess ? '(推測)' : '' }}
-        </div>
-        <div>
-          <span class="req-label">要求等級</span><span class="lv">Lv.{{ equip.level - levelReduce }}</span>
-          <span v-if="levelReduce > 0" class="fl"> (-{{ levelReduce }})</span>
-        </div>
-      </div>
-
-      <div class="divider"></div>
-      <div class="stats">
-        <div v-for="l in lines" :key="l.key" class="stat-line" data-test="stat-line">
-          <span class="stat-label">{{ l.label }}</span><span class="stat-total">{{ l.total }}</span>
-          <span v-if="l.parts.length" class="stat-parts">
-            ({{ l.base }}<template v-for="(p, i) in l.parts" :key="i">{{ ' ' }}<span :class="p.cls">{{ p.text }}</span></template>)
-          </span>
-        </div>
-      </div>
-      <div v-if="breakdown.starforceUnsourced" class="note">※ 此星數的攻擊力星力加成無資料，數值可能偏低</div>
-      <div v-if="setInfo" class="set" data-test="set">套裝：{{ setInfo.name }}（{{ setInfo.completeCount }}件）</div>
-
-      <div class="divider"></div>
-      <div class="summary">
-        <div data-test="summary-star">
-          <span class="sum-icon sf">★</span>星力：
-          <template v-if="locked.has('starforce')">無法強化</template>
-          <template v-else>{{ summary.star }}星（最多{{ summary.maxStar }}星）</template>
-        </div>
-        <div data-test="summary-scroll">
-          <span class="sum-icon sc">✎</span>卷軸：
-          <template v-if="locked.has('scroll')">無法強化</template>
-          <template v-else>
-            {{ summary.scroll.used }}次（剩餘{{ summary.scroll.remaining }}次，可恢復{{ summary.scroll.recoverable }}次）
-          </template>
-        </div>
-        <div v-if="locked.has('hammer') || summary.hammer.length" data-test="summary-hammer">
-          <template v-if="locked.has('hammer')"><span class="sum-icon">⚒</span>鐵鎚：無法強化</template>
-          <div v-for="h in summary.hammer" v-else :key="h.id">
-            <span class="sum-icon">⚒</span>{{ h.name }}：{{ h.used }}/{{ h.max }}
+      <div class="top">
+        <div class="icon-frame" data-test="tt-icon"><ItemIcon :item-id="d.equip.id" :size="52" /></div>
+        <div class="cp" data-test="combat-power">
+          <div class="cp-title">戰鬥力提升量</div>
+          <div class="cp-value">+ 0</div>
+          <div class="tags">
+            <span v-for="(t, i) in tags" :key="i" class="tag">{{ t }}</span>
           </div>
         </div>
-        <div data-test="summary-flame" :class="{ dim: summary.flameLocked }">
-          <span class="sum-icon fl">✦</span>追加屬性：
-          <template v-if="summary.flameLocked">無法強化</template>
-          <template v-else>{{ flameCount > 0 ? `${flameCount}條` : '無' }}</template>
+      </div>
+
+      <div class="meta" data-test="meta">
+        <span class="meta-label">裝備職業</span><span>{{ jobLabel }}</span>
+        <template v-if="specJob">
+          <span class="meta-label">限定職業</span><span data-test="spec-job">{{ specJob.name }}{{ specJob.guess ? '(推測)' : ''
+          }}</span>
+        </template>
+        <span class="meta-label">要求等級</span>
+        <span><span class="sf">Lv.{{ d.equip.level - levelReduce }}</span><span v-if="levelReduce > 0" class="fl">
+            (-{{ levelReduce }})</span></span>
+      </div>
+
+      <div class="stats">
+        <div v-for="l in lines" :key="l.key" class="stat-line" data-test="stat-line"><span class="stat-label">{{ l.label
+          }}</span><span class="stat-val"><span class="stat-total">{{ l.total }}</span><template v-if="l.parts.length">
+              ({{ l.base }}<template v-for="(p, i) in l.parts" :key="i">{{ ' ' }}<span :class="p.cls">{{ p.text
+                }}</span></template>)</template></span></div>
+      </div>
+      <div v-if="d.breakdown.starforceUnsourced" class="note">※ 此星數的攻擊力星力加成無資料，數值可能偏低</div>
+      <div v-if="setInfo" class="set" data-test="set">套裝：{{ setInfo.name }}（{{ setInfo.completeCount }}件）</div>
+
+      <div class="dash"></div>
+      <div class="status">
+        <div data-test="summary-flame">追加屬性 <span v-if="d.summary.flameLocked" class="dim">無法強化</span><template
+            v-else>{{ flameCount > 0 ? `${flameCount}條` : '無' }}</template></div>
+        <div data-test="summary-scroll">卷軸 <span v-if="locked.has('scroll')" class="dim">無法強化</span><template
+            v-else>強化 {{ d.summary.scroll.used }}次（剩餘{{ d.summary.scroll.remaining }}次，可恢復{{
+              d.summary.scroll.recoverable }}次）</template></div>
+        <div v-if="locked.has('hammer') || d.summary.hammer.length" data-test="summary-hammer">
+          <template v-if="locked.has('hammer')">鐵鎚 <span class="dim">無法強化</span></template>
+          <div v-for="h in d.summary.hammer" v-else :key="h.id">{{ h.label }} {{ h.used }}/{{ h.max }}</div>
         </div>
         <div v-if="!locked.has('exceptional')" data-test="summary-exceptional">
-          <span class="sum-icon ex">◆</span>卓越強化：{{ state.exceptional }}/{{ equip.exceptionalMax }}
-          <span v-if="breakdown.exceptionalNoData" class="note">（無資料）</span>
+          卓越強化 {{ d.state.exceptional }}/{{ d.equip.exceptionalMax }}<span v-if="d.breakdown.exceptionalNoData"
+            class="dim">（無資料）</span>
         </div>
       </div>
 
       <template v-for="p in potentials" :key="p.title">
-        <div class="divider"></div>
-        <div class="potential">
-          <div class="potential-title">{{ p.title }}：{{ p.pick.grade }}</div>
-          <div v-for="(line, i) in p.pick.lines.filter((x) => x !== null)" :key="i">・{{ line }}</div>
+        <div class="dash"></div>
+        <div class="potential" :class="p.badge" data-test="potential">
+          <span class="badge" :class="p.badge">{{ p.badge }}</span><span class="potential-title">{{ p.title }}：{{
+            p.grade }}</span>
+          <ul>
+            <li v-for="(line, i) in p.lines" :key="i">{{ line }}</li>
+          </ul>
         </div>
       </template>
     </template>
 
     <template v-else>
       <div class="compact-head">
-        <div class="icon-box small">
-          <img v-if="!iconFailed" class="equip-icon" :src="iconUrl(equip.id)" :alt="equip.name" @error="iconFailed = true"
-            @load="onIconLoad" />
-          <span v-else class="icon-placeholder" data-test="icon-placeholder">?</span>
-        </div>
+        <div class="icon-frame small" data-test="tt-icon"><ItemIcon :item-id="d.equip.id" :size="30" /></div>
         <div>
-          <div class="equip-name">{{ equip.name }}</div>
-          <div v-if="summary.maxStar > 0" class="sf">★ {{ summary.star }}/{{ summary.maxStar }}</div>
+          <div class="equip-name">{{ d.equip.name }}</div>
+          <div v-if="d.summary.maxStar > 0" class="star-count" data-test="compact-stars">
+            <span class="sf">★</span> {{ d.summary.star }}/{{ d.summary.maxStar }}
+          </div>
         </div>
       </div>
       <div class="compact-stats">
-        <span v-for="l in lines" :key="l.key" class="compact-stat" data-test="stat-line">
-          <span class="stat-label">{{ l.label }}</span>{{ l.total }}
-        </span>
+        <span v-for="l in lines" :key="l.key" class="compact-stat" data-test="stat-line"><span class="stat-label">{{
+          l.label }}</span>{{ l.total }}</span>
       </div>
     </template>
   </div>
 </template>
 
 <style lang="scss" scoped>
+// New in-game tooltip look (spec §6, mockup layout-v22 `.tt`).
 .equip-tooltip {
-  --tt-bg: rgba(22, 24, 32, 0.96);
-  --tt-border: #6b6f7d;
+  --tt-bg: rgba(36, 44, 58, 0.92);
   --tt-text: #ffffff;
-  --tt-dim: #9aa0aa;
-  --tt-sf: #ffcc33;
-  --tt-sc: #a8a8ff;
+  --tt-dim: #9aa3b0;
+  --tt-label: #c8cdd5;
+  --tt-sf: #ffcc00;
+  --tt-sc: #66ccff;
   --tt-fl: #ccff00;
   --tt-ex: #ff8866;
 
-  width: 300px;
-  padding: 10px 12px;
+  box-sizing: border-box;
+  width: 320px;
+  padding: 8px 10px 10px;
   background: var(--tt-bg);
-  border: 1px solid var(--tt-border);
-  border-radius: 6px;
+  border: 1px solid rgba(190, 205, 225, 0.55);
+  outline: 1px solid rgba(0, 0, 0, 0.5);
+  border-radius: 5px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
   color: var(--tt-text);
-  font-size: 12px;
-  line-height: 1.55;
+  font-size: 13px;
+  line-height: 1.45;
 
   &.compact {
     width: 100%;
@@ -279,118 +296,132 @@ const potentials = computed(() =>
   color: var(--tt-ex);
 }
 
+.dim {
+  color: var(--tt-dim);
+}
+
 .stars {
   text-align: center;
-  margin-bottom: 4px;
-
-  .star-row {
-    line-height: 1.1;
-  }
+  font-size: 11px;
+  line-height: 13px;
 
   .star-group {
-    margin: 0 3px;
+    margin: 0 6px;
   }
 
   .star {
-    color: #4a4d57;
-    font-size: 11px;
+    color: #6b7280;
 
     &.lit {
-      color: var(--tt-sf);
+      color: #ffcc11;
     }
   }
 }
 
 .equip-name {
+  margin-top: 5px;
   text-align: center;
   font-size: 15px;
-  font-weight: bold;
+  font-weight: 700;
+  color: #fff;
 }
 
 .trade {
   text-align: center;
-  color: #ff9933;
+  font-size: 12px;
+  color: #ff9c27;
 }
 
-.head {
+.top {
   display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  margin: 8px 0 6px;
-
-  .tags {
-    display: flex;
-    gap: 4px;
-  }
-
-  .tag {
-    padding: 0 6px;
-    border-radius: 3px;
-    background: #3c3f4a;
-    color: #d8dbe2;
-  }
+  gap: 10px;
+  align-items: flex-start;
+  margin-top: 6px;
 }
 
-.icon-box {
-  width: 76px;
-  height: 76px;
+.icon-frame {
+  box-sizing: border-box;
+  width: 78px;
+  height: 78px;
+  flex: none;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(#e9eaee, #b7bac3);
+  border: 1px solid #c9cfd8;
   border-radius: 6px;
+  background: linear-gradient(160deg, #d9dde3, #8f96a1);
+
+  // scale the ~32px game icon up to the ItemIcon box (52px), pixel-crisp as in the mockup
+  :deep(img) {
+    width: 100%;
+    height: 100%;
+    image-rendering: pixelated;
+  }
 
   &.small {
     width: 40px;
     height: 40px;
-    flex: none;
-
-    .equip-icon {
-      width: 32px;
-      height: 32px;
-    }
-  }
-
-  .equip-icon {
-    width: 64px;
-    height: 64px;
-    object-fit: contain;
-    image-rendering: pixelated;
-  }
-
-  .icon-placeholder {
-    color: #6b6f7d;
-    font-size: 28px;
-    font-weight: bold;
   }
 }
 
-.req {
-  .req-label {
-    display: inline-block;
-    width: 64px;
+.cp {
+  flex: 1;
+  text-align: right;
+
+  .cp-title {
+    font-size: 12px;
     color: var(--tt-dim);
   }
 
-  .lv {
-    color: var(--tt-sf);
+  .cp-value {
+    margin-top: 2px;
+    font-size: 26px;
+    font-weight: 700;
+    line-height: 1.2;
+  }
+
+  .tags {
+    margin-top: 6px;
+  }
+
+  .tag {
+    display: inline-block;
+    margin-left: 4px;
+    padding: 1px 8px;
+    border-radius: 9px;
+    background: rgba(150, 160, 175, 0.35);
+    color: #e6e9ee;
+    font-size: 12px;
   }
 }
 
-.divider {
-  border-top: 1px dashed #4a4d57;
-  margin: 6px 0;
+.meta {
+  display: grid;
+  grid-template-columns: 4.5em 1fr;
+  row-gap: 1px;
+  margin: 6px 0 2px;
+  font-size: 12px;
+
+  .meta-label {
+    color: var(--tt-label);
+  }
+}
+
+.stats {
+  font-family: Consolas, 'MingLiU', monospace;
+  font-size: 12.5px;
 }
 
 .stat-line {
-  .stat-label {
-    display: inline-block;
-    min-width: 72px;
-  }
+  display: grid;
+  grid-template-columns: minmax(5.6em, max-content) 1fr;
+  column-gap: 4px;
+  line-height: 17px;
+}
 
-  .stat-parts {
-    margin-left: 4px;
-  }
+.dash {
+  border-top: 1px solid rgba(255, 255, 255, 0.18);
+  margin: 6px 0;
 }
 
 .note {
@@ -400,22 +431,109 @@ const potentials = computed(() =>
 
 .set {
   margin-top: 4px;
+  font-size: 12px;
   color: var(--tt-fl);
 }
 
-.summary {
-  .sum-icon {
-    display: inline-block;
-    width: 16px;
+.status {
+  font-size: 12px;
+  line-height: 17px;
+}
+
+.potential {
+  font-size: 12.5px;
+  line-height: 18px;
+
+  .badge {
+    display: inline-flex;
+    width: 14px;
+    height: 14px;
+    margin-right: 4px;
+    align-items: center;
+    justify-content: center;
+    border-radius: 2px;
+    vertical-align: -1px;
+    font-size: 10px;
+    font-weight: 700;
+    color: #fff;
   }
 
-  .dim {
+  &.R {
+    .badge {
+      background: #3d8fd1;
+    }
+
+    .potential-title {
+      color: #66ccff;
+    }
+  }
+
+  &.E {
+    .badge {
+      background: #9b59d0;
+    }
+
+    .potential-title {
+      color: #d39bff;
+    }
+  }
+
+  &.U {
+    .badge {
+      background: #d4a017;
+    }
+
+    .potential-title {
+      color: #ffcc33;
+    }
+  }
+
+  &.L {
+    .badge {
+      background: #3cbf3c;
+    }
+
+    .potential-title {
+      color: #7dff5a;
+    }
+  }
+
+  ul {
+    margin: 0;
+    padding: 0;
+  }
+
+  li {
+    list-style: none;
+    padding-left: 4px;
+
+    &::before {
+      content: '■';
+      margin-right: 6px;
+      font-size: 8px;
+      vertical-align: 2px;
+      color: #fff;
+    }
+  }
+}
+
+.placeholder {
+  .top {
+    align-items: center;
+    margin-top: 0;
+  }
+
+  .ph-text {
+    flex: 1;
+    text-align: center;
     color: var(--tt-dim);
+    font-size: 14px;
   }
-}
 
-.potential-title {
-  color: var(--tt-fl);
+  &.compact .icon-frame {
+    width: 40px;
+    height: 40px;
+  }
 }
 
 .compact-head {
@@ -424,8 +542,13 @@ const potentials = computed(() =>
   gap: 8px;
 
   .equip-name {
+    margin-top: 0;
     text-align: left;
     font-size: 13px;
+  }
+
+  .star-count {
+    font-size: 12px;
   }
 }
 
@@ -434,10 +557,12 @@ const potentials = computed(() =>
   flex-wrap: wrap;
   gap: 2px 10px;
   margin-top: 4px;
+  font-family: Consolas, 'MingLiU', monospace;
+  font-size: 12px;
 
   .stat-label {
-    color: var(--tt-dim);
     margin-right: 2px;
+    color: var(--tt-dim);
   }
 }
 </style>

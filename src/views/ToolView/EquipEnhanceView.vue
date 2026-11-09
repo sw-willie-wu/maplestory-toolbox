@@ -102,7 +102,10 @@ const view = computed(() => {
     summary: tooltipSummary(e, s, breakdown, lockedSet),
     setInfo: data.setInfo(e.setId),
     specJob: data.jobName(e.specJob),
-    tags: [data.slotName(e.slot)]
+    // official category / detail names; slot name only for items outside the official categories
+    tags: e.searchCategory === null
+      ? [data.slotName(e.slot)]
+      : [data.categoryName(e.searchCategory), data.detailName(e.searchCategory, e.searchDetail)]
   }
 })
 
@@ -164,8 +167,7 @@ onBeforeUnmount(() => {
         <EquipTooltip v-if="view" :equip="view.equip" :breakdown="view.breakdown" :state="view.state"
           :summary="view.summary" :locked="view.locked" :set-info="view.setInfo" :spec-job="view.specJob"
           :tags="view.tags" :compact="isCompact && !expanded" />
-        <!-- temporary placeholder; Task 10 replaces it with <EquipTooltip placeholder> -->
-        <div v-else class="eq-tip__placeholder" data-test="tooltip-placeholder">請選擇裝備</div>
+        <EquipTooltip v-else placeholder :compact="isCompact" />
       </div>
       <button v-if="isCompact && view" type="button" class="eq-tip__toggle" :aria-expanded="expanded"
         data-test="tooltip-toggle" @click="expanded = !expanded">
@@ -283,14 +285,6 @@ onBeforeUnmount(() => {
   scrollbar-width: thin;
 }
 
-.eq-tip__placeholder {
-  padding: 2rem 1rem;
-  text-align: center;
-  color: #7a8597;
-  border: 1px dashed rgb(160, 170, 185);
-  background: var(--color-card, rgb(249, 251, 255));
-}
-
 .eq-tip__toggle {
   display: block;
   width: 100%;
@@ -322,8 +316,16 @@ onBeforeUnmount(() => {
   .eq-tip {
     width: 100%;
 
-    :deep(.equip-tooltip) {
+    // collapsed summary row spans the column
+    :deep(.equip-tooltip.compact) {
       width: 100%;
+    }
+
+    // expanded full tooltip keeps its in-game width, right-aligned in the column (controller ruling, Task 10 I1)
+    :deep(.equip-tooltip:not(.compact)) {
+      width: 100%;
+      max-width: 320px;
+      margin-left: auto;
     }
   }
 }

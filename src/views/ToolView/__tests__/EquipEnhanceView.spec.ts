@@ -95,8 +95,9 @@ describe('EquipEnhanceView', () => {
   it('random equip on load with injected rng', async () => {
     vi.stubGlobal('fetch', diskFetch)
     const w = mountView({ rng: () => 0 })
-    expect(w.findComponent(EquipTooltip).exists()).toBe(false)
+    expect(w.findComponent(EquipTooltip).props('placeholder')).toBe(true)
     await flushPromises()
+    expect(w.findComponent(EquipTooltip).props('placeholder')).toBe(false)
     expect(tipName(w)).toContain(TOOL[0].name)
     // the picker's cascade follows the random pick
     expect((w.find('[data-test="equip"]').element as HTMLSelectElement).value).toBe(String(TOOL[0].id))
@@ -109,6 +110,12 @@ describe('EquipEnhanceView', () => {
     expect(tip.text()).toContain('Lv.150')
     expect(tip.findAll('.star.lit')).toHaveLength(0)
     expect(tip.findAll('.star')).toHaveLength(30)
+  })
+
+  it('tooltip tags are the official category and detail names', async () => {
+    const w = await selected(RING)
+    expect(w.findComponent(EquipTooltip).props('tags')).toEqual(['飾品', '戒指'])
+    expect(w.findComponent(EquipTooltip).findAll('.tag').map((t) => t.text())).toEqual(['飾品', '戒指'])
   })
 
   it('no page h1; data version inside main card', async () => {
@@ -219,7 +226,8 @@ describe('EquipEnhanceView sidebar and panels', () => {
       expect(side(w, id).attributes('title')).toBe('請先選擇裝備')
     }
     expect(side(w, 'picker').attributes('aria-disabled')).toBeUndefined()
-    expect(w.find('[data-test="tooltip-placeholder"]').exists()).toBe(true)
+    expect(w.findComponent(EquipTooltip).props('placeholder')).toBe(true)
+    expect(w.find('[data-test="tooltip-placeholder"]').text()).toContain('請選擇裝備')
     expect(w.find('[data-test="editor-placeholder"]').exists()).toBe(true)
   })
 

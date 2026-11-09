@@ -13,7 +13,7 @@ export interface TooltipSummary {
   maxStar: number
   scroll: { used: number; remaining: number; recoverable: number }
   /** Hammer types actually used on this item (applied > 0), as in game (rows with 0 uses are not shown). */
-  hammer: { id: string; name: string; used: number; max: number }[]
+  hammer: { id: string; name: string; label: string; used: number; max: number }[]
   flameLocked: boolean
 }
 
@@ -29,6 +29,8 @@ export function tooltipSummary(
     .map((def) => ({
       id: def.id,
       name: def.name,
+      // game wording: 「白金鐵鎚（提煉）」 → 「白金鐵鎚 提煉」
+      label: def.name.replace(/（(.+)）$/, ' $1'),
       used: uses.find((u) => u.id === def.id)?.applied ?? 0,
       max: def.max
     }))
