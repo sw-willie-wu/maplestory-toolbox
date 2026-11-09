@@ -127,11 +127,20 @@ const expanded = ref(false)
 /** Sticky top of C: below the fixed navbar (expanded ≥ 992px, collapsed below) + a small gap. */
 const stickyTop = computed(() => (isMobile.value ? 46 : 76))
 const outerStyle = { alignItems: 'start' } as const
-const pinStyle = computed(() => ({ top: `${stickyTop.value}px` }))
+// < 1200 the pinned aside spans the column but only the tooltip / toggle are opaque: the rest lets clicks
+// through to the panel scrolled underneath (pointer-events none on the aside, auto on its visible parts).
+const pinStyle = computed(() => ({
+  top: `${stickyTop.value}px`,
+  ...(isCompact.value ? { pointerEvents: 'none' as const } : {})
+}))
 const scrollStyle = computed(() => ({
   maxHeight: isCompact.value ? '65vh' : `calc(100vh - ${stickyTop.value}px - 16px)`,
-  overflowY: 'auto' as const
+  overflowY: 'auto' as const,
+  // a vertical scrollbar narrows the column: the tooltip fills it (CSS) instead of adding a horizontal bar
+  overflowX: 'hidden' as const,
+  ...(isCompact.value ? { pointerEvents: 'auto' as const } : {})
 }))
+const toggleStyle = { pointerEvents: 'auto' } as const
 
 const picker = ref<InstanceType<typeof EquipPicker> | null>(null)
 
@@ -169,7 +178,7 @@ onBeforeUnmount(() => {
           :tags="view.tags" :compact="isCompact && !expanded" />
         <EquipTooltip v-else placeholder :compact="isCompact" />
       </div>
-      <button v-if="isCompact && view" type="button" class="eq-tip__toggle" :aria-expanded="expanded"
+      <button v-if="isCompact && view" type="button" class="eq-tip__toggle" :style="toggleStyle" :aria-expanded="expanded"
         data-test="tooltip-toggle" @click="expanded = !expanded">
         {{ expanded ? '收合說明框' : '展開說明框' }}
       </button>
@@ -283,6 +292,11 @@ onBeforeUnmount(() => {
 .eq-tip__scroll {
   // keep the tooltip's own look; only scrolling here
   scrollbar-width: thin;
+
+  // fill the column (320px, or less once the vertical scrollbar shows) instead of overflowing it
+  :deep(.equip-tooltip) {
+    width: 100%;
+  }
 }
 
 .eq-tip__toggle {
@@ -321,9 +335,9 @@ onBeforeUnmount(() => {
       width: 100%;
     }
 
-    // expanded full tooltip keeps its in-game width, right-aligned in the column (controller ruling, Task 10 I1)
-    :deep(.equip-tooltip:not(.compact)) {
-      width: 100%;
+    // expanded full tooltip keeps its in-game width, right-aligned in the column (controller ruling, Task 10 I1);
+    // the scroll box itself shrinks to it, so its scrollbar sits on the tooltip and the rest of the row is click-through
+    &.expanded .eq-tip__scroll {
       max-width: 320px;
       margin-left: auto;
     }

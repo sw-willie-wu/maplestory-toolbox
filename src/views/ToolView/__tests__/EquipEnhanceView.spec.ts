@@ -269,6 +269,8 @@ describe('EquipEnhanceView layout', () => {
     const style = w.find('[data-test="tooltip-scroll"]').attributes('style') ?? ''
     expect(style).toContain('max-height')
     expect(style).toContain('overflow-y: auto')
+    // a vertical scrollbar must not add a horizontal one (tooltip fills the column instead)
+    expect(style).toContain('overflow-x: hidden')
   })
 
   it('middle column height does not follow tooltip', async () => {
@@ -307,6 +309,17 @@ describe('EquipEnhanceView layout', () => {
       const w = await selected(RING)
       expect(w.findComponent(EquipTooltip).props('compact')).toBe(false)
       expect(w.find('[data-test="tooltip-toggle"]').exists()).toBe(false)
+      expect(w.find('[data-test="tooltip-pin"]').attributes('style') ?? '').not.toContain('pointer-events')
+    })
+
+    it('pinned full-width C only catches clicks on the tooltip and the toggle', async () => {
+      vi.stubGlobal('matchMedia', narrowMatchMedia)
+      const w = await selected(RING)
+      await w.find('[data-test="tooltip-toggle"]').trigger('click')
+      // the sticky aside spans the column; its transparent part must not block the panel scrolled under it
+      expect(w.find('[data-test="tooltip-pin"]').attributes('style')).toContain('pointer-events: none')
+      expect(w.find('[data-test="tooltip-scroll"]').attributes('style')).toContain('pointer-events: auto')
+      expect(w.find('[data-test="tooltip-toggle"]').attributes('style')).toContain('pointer-events: auto')
     })
   })
 
