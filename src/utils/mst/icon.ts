@@ -19,3 +19,28 @@ export const encodeIconCode = (itemId: number): string => {
 }
 
 export const iconUrl = (itemId: number): string => ICON_BASE + encodeIconCode(itemId)
+
+// Inverse of encodeIconCode. Throws RangeError for anything that is not a
+// valid 8-letter code (each char must decode to a digit 0-9).
+export const decodeIconCode = (code: string): number => {
+  if (typeof code !== 'string' || code.length !== 8) {
+    throw new RangeError(`invalid icon code: ${code}`)
+  }
+  let digits = ''
+  for (let p = 0; p < 8; p++) {
+    const d = (code.charCodeAt(p) - 65) ^ KEY[p]
+    if (!(d >= 0 && d <= 9)) throw new RangeError(`invalid icon code: ${code}`)
+    digits += d
+  }
+  return Number(digits)
+}
+
+// Extracts the item id from a NEXON icon url; null when it is not one.
+export const itemIdFromIconUrl = (url: string): number | null => {
+  if (typeof url !== 'string' || !url.startsWith(ICON_BASE)) return null
+  try {
+    return decodeIconCode(url.slice(ICON_BASE.length))
+  } catch {
+    return null
+  }
+}
