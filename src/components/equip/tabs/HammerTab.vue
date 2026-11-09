@@ -108,6 +108,11 @@ $muted: #7a8597;
   flex-direction: column;
   gap: 2px;
   font-size: 13px;
+
+  // .eq-form folds to label | control below 992px: info goes under the stepper
+  @media (max-width: 991.98px) {
+    grid-column: 2;
+  }
 }
 
 .hm-reason {

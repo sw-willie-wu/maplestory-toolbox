@@ -35,7 +35,13 @@ type Panel = Exclude<PanelId, 'picker'>
 
 function mountEditor(
   id: number,
-  opts: { active?: Panel; state?: Partial<EnhanceState>; potential?: boolean; potentialError?: string | null } = {},
+  opts: {
+    active?: Panel
+    state?: Partial<EnhanceState>
+    potential?: boolean
+    potentialError?: string | null
+    attachTo?: boolean
+  } = {},
 ): { w: VueWrapper; state: EnhanceState; equip: EquipData } {
   const equip = loadEquipSync(id)
   const state = reactive({ ...emptyState(equip), ...opts.state }) as EnhanceState
@@ -47,6 +53,7 @@ function mountEditor(
       potentialOptions: opts.potential === false ? null : potentialOptions,
       potentialError: opts.potentialError ?? null,
     },
+    attachTo: opts.attachTo ? document.body : undefined,
   })
   return { w, state, equip }
 }
@@ -94,11 +101,35 @@ describe('EnhanceEditor panels', () => {
     expect(main.find('[data-test="pot-grade-additional"]').exists()).toBe(false)
   })
 
-  it('potential load failure shows a retry that emits retryPotential', async () => {
+  it('potential load failure shows message and retry emits', async () => {
     const { w } = mountEditor(CAP_BOSS, { active: 'potential', potential: false, potentialError: 'HTTP 503' })
-    expect(w.find('[data-test="potential-error"]').text()).toContain('潛能選項載入失敗')
-    await w.find('[data-test="potential-retry"]').trigger('click')
+    const panel = w.find('[data-test="panel-potential"]')
+    expect(panel.find('[data-test="potential-error"]').text()).toContain('潛能選項載入失敗')
+    // only the error + retry, not the loading text as well
+    expect(panel.text()).not.toContain('載入中')
+    expect(w.findAll('[data-test="potential-error"]')).toHaveLength(1)
+    await panel.find('[data-test="potential-retry"]').trigger('click')
     expect(w.emitted('retryPotential')).toHaveLength(1)
+
+    await open(w, 'bonusPotential')
+    const bonus = w.find('[data-test="panel-bonusPotential"]')
+    expect(bonus.find('[data-test="potential-error"]').text()).toContain('潛能選項載入失敗')
+    expect(bonus.text()).not.toContain('載入中')
+    await bonus.find('[data-test="potential-retry"]').trigger('click')
+    expect(w.emitted('retryPotential')).toHaveLength(2)
+  })
+
+  it('all panels use toggles instead of checkboxes', async () => {
+    const { w } = mountEditor(CAP_BOSS)
+    const medal = mountEditor(MEDAL).w
+    for (const p of PANELS) {
+      const host = p.id === 'exceptional' ? medal : w
+      await open(host, p.id)
+      const panel = host.find(`[data-test="panel-${p.id}"]`)
+      expect(panel.exists(), p.id).toBe(true)
+      expect(panel.findAll('input[type="checkbox"]'), p.id).toHaveLength(0)
+      expect(panel.findAll('input[type="number"]'), p.id).toHaveLength(0)
+    }
   })
 })
 
@@ -323,8 +354,38 @@ describe('ScrollTab', () => {
     const { w, state } = mountEditor(CAP_BOSS)
     await open(w, 'scroll')
     const row = await addScroll(w, 'destiny', 2)
-    await row.find('[data-test="scroll-avg-att"]').setValue('3')
+    const avg = row.findAllComponents(STEPPER).find((s: VueWrapper) => s.find('[data-test="scroll-avg-att"]').exists())!
+    expect(avg.props('nullable')).toBe(true)
+    expect(avg.props('max')).toBe(Infinity)
+    expect(avg.props('min')).toBe(-Infinity)
+    expect(avg.props('precision')).toBe(2)
+    await step(w, '[data-test="scroll-avg-att"]', '3')
     expect(state.scroll.entries[0].avgPerScroll).toEqual({ att: 3 })
+    await step(w, '[data-test="scroll-avg-att"]', '2.5')
+    expect(state.scroll.entries[0].avgPerScroll).toEqual({ att: 2.5 })
+    await step(w, '[data-test="scroll-avg-matt"]', '-3')
+    expect(state.scroll.entries[0].avgPerScroll).toEqual({ att: 2.5, matt: -3 })
+    await step(w, '[data-test="scroll-avg-matt"]', '')
+    await step(w, '[data-test="scroll-avg-att"]', '')
+    expect(state.scroll.entries[0].avgPerScroll).toEqual({})
+    expect(row.find('.sc-avg label.sc-avg__field').exists()).toBe(false) // no label wrapping the stepper
+    expect((w.find('[data-test="scroll-avg-att"]').element as HTMLInputElement).value).toBe('')
+  })
+
+  it('clicking the average caption text does not change the value', async () => {
+    const { w, state } = mountEditor(CAP_BOSS, { attachTo: true })
+    try {
+      await open(w, 'scroll')
+      await addScroll(w, 'destiny', 2)
+      await step(w, '[data-test="scroll-avg-att"]', '3')
+      // real DOM click so label activation behaviour (forwarding to the first labelable descendant) applies
+      ;(w.find('[data-test="scroll-avg-caption-att"]').element as HTMLElement).click()
+      await flushPromises()
+      expect(state.scroll.entries[0].avgPerScroll).toEqual({ att: 3 })
+      expect((w.find('[data-test="scroll-avg-att"]').element as HTMLInputElement).value).toBe('3')
+    } finally {
+      w.unmount()
+    }
   })
 
   it('removes an entry', async () => {
@@ -407,6 +468,18 @@ describe('FlameTab', () => {
     expect(values).not.toContain('str')
   })
 
+  it('boss flame header says 4 lines and only enter lines you care about', async () => {
+    const boss = mountEditor(CAP_BOSS).w
+    await open(boss, 'flame')
+    const head = boss.find('[data-test="flame-header"]').text()
+    expect(head).toContain('固定 4 條')
+    expect(head).toContain('只需填入在意的條目')
+    const normal = mountEditor(CAP).w
+    await open(normal, 'flame')
+    expect(normal.find('[data-test="flame-header"]').text()).toContain('1～4 條')
+    expect(normal.find('[data-test="flame-header"]').text()).not.toContain('固定 4 條')
+  })
+
   it('shows the value note for extrapolated boss weapon ATT tiers', async () => {
     const { w } = mountEditor(FIST)
     await open(w, 'flame')
@@ -419,11 +492,16 @@ describe('ExceptionalTab', () => {
   it('sets the level, shows 無資料 for unobserved levels and the hammer expectation', async () => {
     const { w, state } = mountEditor(MEDAL)
     await open(w, 'exceptional')
-    await w.find('[data-test="ex-level"]').setValue('1')
+    const lv = w.findAllComponents(STEPPER).find((s) => s.find('[data-test="ex-level"]').exists())!
+    expect(lv.props('nullable')).toBe(false)
+    expect(lv.props('max')).toBe(3)
+    expect(lv.props('suffix')).toBe('/ 3')
+    await step(w, '[data-test="ex-level"]', '1')
     expect(state.exceptional).toBe(1)
     expect(w.find('[data-test="ex-stats"]').text()).toContain('無資料')
-    await w.find('[data-test="ex-level"]').setValue('2')
+    await step(w, '[data-test="ex-level"]', '2')
     expect(w.find('[data-test="ex-stats"]').text()).toContain('+40')
+    expect(w.find('[data-test="ex-expect"]').classes()).toContain('eq-res')
     const exp = w.find('[data-test="ex-expect"]').text()
     expect(exp).toContain('卓越鐵鎚')
     expect(exp).toContain('3') // 1/1 + 1/0.5
@@ -466,14 +544,66 @@ describe('PotentialTab', () => {
     const { w } = mountEditor(CAP_BOSS, { potential: false })
     await open(w, 'potential')
     expect(w.find('[data-test="panel-potential"]').text()).toContain('載入中')
+    expect(w.find('[data-test="potential-error"]').exists()).toBe(false)
   })
 })
 
 describe('ReverseTab', () => {
+  it('reverse observation inputs use nullable steppers without max', async () => {
+    const { w } = mountEditor(CAP)
+    await open(w, 'reverse')
+    const steppers = w.find('[data-test="panel-reverse"]').findAllComponents(STEPPER)
+    const observed = steppers.filter((s: VueWrapper) => {
+      const t = s.find('input').attributes('data-test') ?? ''
+      return /^r[fs]-/.test(t) && t !== 'rs-slots'
+    })
+    expect(observed.length).toBeGreaterThan(8)
+    for (const s of observed) {
+      expect(s.props('nullable')).toBe(true)
+      expect(s.props('max')).toBe(Infinity)
+    }
+  })
+
+  it('scroll reverse observations accept negative values', async () => {
+    const { w } = mountEditor(RING)
+    await open(w, 'reverse')
+    const att = w.find('[data-test="panel-reverse"]').findAllComponents(STEPPER)
+      .find((s: VueWrapper) => s.find('[data-test="rs-att"]').exists())!
+    expect(att.props('min')).toBe(-Infinity)
+    await step(w, '[data-test="rs-att"]', '-5')
+    expect((w.find('[data-test="rs-att"]').element as HTMLInputElement).value).toBe('-5')
+  })
+
+  it('reverse inputs keep blank as not-entered', async () => {
+    const { w } = mountEditor(CAP)
+    await open(w, 'reverse')
+    await step(w, '[data-test="rf-dex"]', '24')
+    await step(w, '[data-test="rf-dex"]', '')
+    expect((w.find('[data-test="rf-dex"]').element as HTMLInputElement).value).toBe('')
+    await step(w, '[data-test="rf-str"]', '24')
+    await w.find('[data-test="rf-run"]').trigger('click')
+    const results = w.findAll('[data-test="rf-result"]')
+    expect(results.length).toBeGreaterThan(0)
+    for (const r of results) expect(r.text()).not.toContain('DEX')
+  })
+
+  it('reverse shows message for negative success count', async () => {
+    const { w } = mountEditor(RING)
+    await open(w, 'reverse')
+    await step(w, '[data-test="rs-att"]', '1')
+    expect(w.find('[data-test="rs-run"]').attributes('disabled')).toBeDefined() // success count not entered yet
+    await step(w, '[data-test="rs-slots"]', '-1')
+    expect(w.find('[data-test="rs-negative"]').text()).toContain('成功次數')
+    expect(w.find('[data-test="rs-run"]').attributes('disabled')).toBeDefined()
+    await step(w, '[data-test="rs-slots"]', '1')
+    expect(w.find('[data-test="rs-negative"]').exists()).toBe(false)
+    expect(w.find('[data-test="rs-run"]').attributes('disabled')).toBeUndefined()
+  })
+
   it('reverse tab lists flame combinations and shows not-found message', async () => {
     const { w, state } = mountEditor(CAP)
     await open(w, 'reverse')
-    await w.find('[data-test="rf-str"]').setValue('24')
+    await step(w, '[data-test="rf-str"]', '24')
     await w.find('[data-test="rf-run"]').trigger('click')
     const results = w.findAll('[data-test="rf-result"]')
     expect(results.length).toBeGreaterThan(0)
@@ -483,7 +613,7 @@ describe('ReverseTab', () => {
     await results[0].find('[data-test="rf-apply"]').trigger('click')
     expect(state.flame).toEqual([{ stat: 'str', tier: 3 }])
 
-    await w.find('[data-test="rf-str"]').setValue('7')
+    await step(w, '[data-test="rf-str"]', '7')
     await w.find('[data-test="rf-run"]').trigger('click')
     expect(w.findAll('[data-test="rf-result"]')).toHaveLength(0)
     expect(w.find('[data-test="rf-none"]').text()).toContain('找不到')
@@ -492,8 +622,8 @@ describe('ReverseTab', () => {
   it('scroll reverse lists combinations, warns when incomplete and shows the random average', async () => {
     const { w, equip } = mountEditor(RING)
     await open(w, 'reverse')
-    await w.find('[data-test="rs-att"]').setValue('100')
-    await w.find('[data-test="rs-slots"]').setValue('20')
+    await step(w, '[data-test="rs-att"]', '100')
+    await step(w, '[data-test="rs-slots"]', '20')
     await w.find('[data-test="rs-run"]').trigger('click')
     await flushPromises()
     const expected = reverseScrollDetailed(equip, { att: 100 }, 20)
@@ -506,13 +636,13 @@ describe('ReverseTab', () => {
   it('scroll reverse shows not-found and blocks used slots above the limit', async () => {
     const { w } = mountEditor(RING)
     await open(w, 'reverse')
-    await w.find('[data-test="rs-att"]').setValue('1')
-    await w.find('[data-test="rs-slots"]').setValue('1')
+    await step(w, '[data-test="rs-att"]', '1')
+    await step(w, '[data-test="rs-slots"]', '1')
     await w.find('[data-test="rs-run"]').trigger('click')
     await flushPromises()
     expect(w.find('[data-test="rs-none"]').text()).toContain('找不到')
 
-    await w.find('[data-test="rs-slots"]').setValue(String(REVERSE_MAX_USED_SLOTS + 1))
+    await step(w, '[data-test="rs-slots"]', String(REVERSE_MAX_USED_SLOTS + 1))
     expect(w.find('[data-test="rs-limit"]').text()).toContain(String(REVERSE_MAX_USED_SLOTS))
     expect(w.find('[data-test="rs-run"]').attributes('disabled')).toBeDefined()
   })

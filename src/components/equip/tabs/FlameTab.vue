@@ -63,63 +63,140 @@ const kms = computed(() => {
 
 <template>
   <div class="flame-tab">
-    <div class="text-muted small mb-2">
-      {{ equip.flameBoss ? 'BOSS 裝備：固定 4 條；強力／永遠 T1–T3、覺醒類 T3–T7' : '一般裝備：1～4 條、T1–T5' }}
-    </div>
+    <h3 class="eq-card__title">星火（追加屬性）</h3>
+    <p class="fl-head" data-test="flame-header">
+      <template v-if="equip.flameBoss">
+        BOSS 裝備固定 4 條（強力／永遠 T1–T3、覺醒類 T3–T7）；只需填入在意的條目，其餘條目不限制。
+      </template>
+      <template v-else>一般裝備 1～4 條、T1–T5；只需填入在意的條目，其餘條目不限制。</template>
+    </p>
 
-    <div v-for="(l, i) in state.flame" :key="i" class="entry-row" data-test="flame-line">
-      <select v-model="l.stat" class="form-select form-select-sm w-auto" aria-label="屬性" data-test="flame-stat">
-        <option v-for="d in statsFor(l)" :key="d.id" :value="d.id">{{ d.name }}</option>
-      </select>
-      <select v-model.number="l.tier" class="form-select form-select-sm w-auto" aria-label="階級" data-test="flame-tier">
-        <option v-for="t in tiers" :key="t" :value="t">T{{ t }}</option>
-      </select>
-      <span class="line-value">{{ lineValue(l) }}</span>
-      <button type="button" class="btn btn-sm btn-outline-danger ms-auto" aria-label="移除" @click="removeLine(i)">✕</button>
-    </div>
-    <button type="button" class="btn btn-sm btn-outline-primary mt-2" :disabled="!canAdd" data-test="flame-add"
-      @click="addLine">
+    <ul v-if="state.flame.length" class="eq-list fl-lines">
+      <li v-for="(l, i) in state.flame" :key="i" data-test="flame-line">
+        <span class="fl-no">第 {{ i + 1 }} 條</span>
+        <select v-model="l.stat" class="eq-control fl-stat" aria-label="屬性" data-test="flame-stat">
+          <option v-for="d in statsFor(l)" :key="d.id" :value="d.id">{{ d.name }}</option>
+        </select>
+        <select v-model.number="l.tier" class="eq-control fl-tier" aria-label="階級" data-test="flame-tier">
+          <option v-for="t in tiers" :key="t" :value="t">T{{ t }}</option>
+        </select>
+        <b class="fl-value">{{ lineValue(l) }}</b>
+        <button type="button" class="eq-link eq-link--danger fl-remove" :aria-label="`移除第 ${i + 1} 條`"
+          @click="removeLine(i)">
+          移除
+        </button>
+      </li>
+    </ul>
+    <button type="button" class="eq-btn eq-btn--ghost fl-add" :disabled="!canAdd" data-test="flame-add" @click="addLine">
       ＋ 新增條目
     </button>
-    <div v-if="notes.length" class="text-warning small mt-2" data-test="flame-notes">
+    <div v-if="notes.length" class="eq-msg eq-msg--warn fl-notes" data-test="flame-notes">
       <div v-for="n in notes" :key="n">※ {{ n }}</div>
     </div>
 
-    <div class="expect mt-3">
-      <div class="expect-title">一次洗出「目前每一條，且階級 ≥ 設定」的機率</div>
-      <div v-if="!probabilities.length" class="text-muted">新增條目後顯示各種星火的機率與期望用量（未指定的剩餘條目不限制）。</div>
-      <table v-else class="table table-sm mb-0 prob-table">
-        <thead>
-          <tr>
-            <th>星火</th>
-            <th class="text-end">機率</th>
-            <th class="text-end">期望用量</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr v-for="p in probabilities" :key="p.type.id" data-test="flame-prob">
-            <td>{{ p.type.name }}</td>
-            <td class="text-end">{{ formatPct(p.p) }}</td>
-            <td class="text-end">{{ p.p > 0 ? `${formatNum(p.expected, 1)} 個` : '不可能' }}</td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
+    <h3 class="eq-card__title">一次洗出「上列每一條，且階級 ≥ 設定」的機率</h3>
+    <p v-if="!probabilities.length" class="eq-msg">新增條目後顯示各種星火的機率與期望用量。</p>
+    <table v-else class="fl-prob">
+      <thead>
+        <tr>
+          <th>星火</th>
+          <th>機率</th>
+          <th>期望用量</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr v-for="p in probabilities" :key="p.type.id" data-test="flame-prob">
+          <td>{{ p.type.name }}</td>
+          <td><b>{{ formatPct(p.p) }}</b></td>
+          <td>
+            <b v-if="p.p > 0">{{ formatNum(p.expected, 1) }} 個</b>
+            <span v-else class="fl-impossible">不可能</span>
+          </td>
+        </tr>
+      </tbody>
+    </table>
 
     <SourceNotice :kms="kms" />
   </div>
 </template>
 
 <style lang="scss" scoped>
-@use './tab-common';
+$line: rgb(200, 206, 216);
+$muted: #7a8597;
 
-.line-value {
-  min-width: 4rem;
-  font-variant-numeric: tabular-nums;
+.fl-head {
+  margin: 0 0 10px;
+  font-size: 13px;
+  color: $muted;
 }
 
-.prob-table {
-  --bs-table-bg: transparent;
+.fl-lines {
+  margin-bottom: 10px;
+
+  > li {
+    flex-wrap: wrap;
+  }
+}
+
+.fl-no {
+  min-width: 3.5em;
+  color: $muted;
+  font-size: 13px;
+}
+
+.fl-stat {
+  width: auto;
+  min-width: 9em;
+}
+
+.fl-tier {
+  width: 5em;
+}
+
+.fl-value {
+  min-width: 4em;
   font-variant-numeric: tabular-nums;
+  color: var(--color-navbar, rgb(40, 50, 65));
+}
+
+.fl-remove {
+  margin-left: auto;
+}
+
+.fl-notes {
+  margin-top: 8px;
+}
+
+.fl-prob {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+
+  th {
+    padding: 0 8px 6px 0;
+    border-bottom: 1px solid $line;
+    font-weight: 400;
+    font-size: 13px;
+    color: $muted;
+    text-align: left;
+  }
+
+  td {
+    padding: 6px 8px 6px 0;
+    color: #333;
+  }
+
+  tr + tr td {
+    border-top: 1px solid $line;
+  }
+
+  b {
+    color: var(--color-navbar, rgb(40, 50, 65));
+  }
+}
+
+.fl-impossible {
+  color: $muted;
 }
 </style>

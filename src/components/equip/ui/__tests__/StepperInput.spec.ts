@@ -33,6 +33,39 @@ describe('StepperInput', () => {
     expect(lastEmit(w)).toBe(3)
   })
 
+  it('precision keeps decimals when normalizing and steps by step', async () => {
+    const w = mount(StepperInput, {
+      props: { modelValue: null, min: -Infinity, nullable: true, precision: 2, ariaLabel: 'x' }
+    })
+    const input = w.find('input')
+    await input.setValue('2.345')
+    await input.trigger('blur')
+    expect(lastEmit(w)).toBe(2.35)
+    expect((input.element as HTMLInputElement).value).toBe('2.35')
+    await input.setValue('-3.5')
+    await input.trigger('blur')
+    expect(lastEmit(w)).toBe(-3.5)
+    await w.setProps({ modelValue: 2.5 })
+    await w.findAll('button')[1].trigger('click')
+    expect(lastEmit(w)).toBe(3.5)
+  })
+
+  it('without precision input is still rounded to an integer', async () => {
+    const w = mount(StepperInput, { props: { modelValue: 0, min: 0, ariaLabel: 'x' } })
+    await w.find('input').setValue('2.5')
+    await w.find('input').trigger('blur')
+    expect(lastEmit(w)).toBe(3)
+  })
+
+  it('stepping from null starts at 0 when the range allows negatives', async () => {
+    const w = mount(StepperInput, { props: { modelValue: null, min: -Infinity, nullable: true, ariaLabel: 'x' } })
+    await w.findAll('button')[0].trigger('click')
+    expect(lastEmit(w)).toBe(0)
+    await w.setProps({ modelValue: 0 })
+    await w.findAll('button')[0].trigger('click')
+    expect(lastEmit(w)).toBe(-1)
+  })
+
   it('stepper normalizes empty/NaN/decimal/out-of-range input', async () => {
     const cases: [string, number, string][] = [
       ['', 0, '0'],

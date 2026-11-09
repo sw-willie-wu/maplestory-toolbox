@@ -6,12 +6,18 @@ import type { EquipData } from '@/utils/mst/enhance/types'
 import SourceNotice from '../SourceNotice.vue'
 import { kmsNotices } from '../format'
 
-const props = defineProps<{
-  equip: EquipData
-  options: PotentialOption[] | null
-  /** Which of the two sidebar panels this is: 潛在能力 or 附加潛在能力 (only that section is rendered). */
-  kind: 'potential' | 'bonusPotential'
-}>()
+const props = withDefaults(
+  defineProps<{
+    equip: EquipData
+    options: PotentialOption[] | null
+    /** Which of the two sidebar panels this is: 潛在能力 or 附加潛在能力 (only that section is rendered). */
+    kind: 'potential' | 'bonusPotential'
+    /** Message of the last option-list load failure (shown instead of 「載入中」); null when none. */
+    error?: string | null
+  }>(),
+  { error: null }
+)
+defineEmits<{ retry: [] }>()
 const state = defineModel<EnhanceState>('state', { required: true })
 
 type Key = 'potential' | 'additional'
@@ -20,7 +26,7 @@ const SECTIONS: { key: Key; kind: PotentialKind; title: string }[] = [
   { key: 'additional', kind: 'additional', title: '附加潛在能力' }
 ]
 
-const sections = computed(() => SECTIONS.filter((s) => s.key === (props.kind === 'potential' ? 'potential' : 'additional')))
+const section = computed(() => SECTIONS[props.kind === 'potential' ? 0 : 1])
 
 const group = computed(() => POTENTIAL.slotGroupOf(props.equip.category, props.equip.slot))
 
@@ -70,34 +76,62 @@ const kms = computed(() =>
 
 <template>
   <div class="potential-tab">
-    <div v-if="!options" class="text-muted">潛能選項載入中…</div>
+    <h3 class="eq-card__title">{{ section.title }}</h3>
+    <div v-if="!options && error" class="pot-error" role="alert" data-test="potential-error">
+      <span>潛能選項載入失敗（{{ error }}）</span>
+      <button type="button" class="eq-btn eq-btn--ghost eq-btn--sm" data-test="potential-retry" @click="$emit('retry')">
+        重試
+      </button>
+    </div>
+    <p v-else-if="!options" class="eq-msg">潛能選項載入中…</p>
     <template v-else>
-      <div v-for="s in sections" :key="s.key" class="pot-section">
-        <div class="section-title">{{ s.title }}</div>
-        <div class="row g-2">
-          <div class="col-12 col-sm-3">
-            <select class="form-select form-select-sm" :value="state[s.key].grade ?? ''" :aria-label="`${s.title}階級`"
-              :data-test="`pot-grade-${s.key}`" @change="setGrade(s.key, s.kind, ($event.target as HTMLSelectElement).value)">
-              <option value="">無</option>
-              <option v-for="g in POTENTIAL.grades" :key="g" :value="g">{{ g }}</option>
+      <div class="eq-form pot-form">
+        <label :for="`pot-grade-${section.key}`">階級：</label>
+        <select :id="`pot-grade-${section.key}`" :value="state[section.key].grade ?? ''"
+          :aria-label="`${section.title}階級`" :data-test="`pot-grade-${section.key}`"
+          @change="setGrade(section.key, section.kind, ($event.target as HTMLSelectElement).value)">
+          <option value="">無</option>
+          <option v-for="g in POTENTIAL.grades" :key="g" :value="g">{{ g }}</option>
+        </select>
+        <template v-for="i in [0, 1, 2]" :key="i">
+          <label :for="`pot-line-${section.key}-${i}`">第 {{ i + 1 }} 條：</label>
+          <div class="full">
+            <select :id="`pot-line-${section.key}-${i}`" :value="state[section.key].lines[i] ?? ''"
+              :disabled="state[section.key].grade === null" :aria-label="`${section.title}第${i + 1}條`"
+              :data-test="`pot-line-${section.key}-${i}`"
+              @change="setLine(section.key, i, ($event.target as HTMLSelectElement).value)">
+              <option value="">{{ state[section.key].grade === null ? '先選擇階級' : '（未指定）' }}</option>
+              <option v-for="t in lineOptions(section.kind, state[section.key].grade, i)" :key="t" :value="t">{{ t }}</option>
             </select>
           </div>
-          <div v-for="i in [0, 1, 2]" :key="i" class="col-12 col-sm-3">
-            <select class="form-select form-select-sm" :value="state[s.key].lines[i] ?? ''"
-              :disabled="state[s.key].grade === null" :aria-label="`${s.title}第${i + 1}條`"
-              :data-test="`pot-line-${s.key}-${i}`" @change="setLine(s.key, i, ($event.target as HTMLSelectElement).value)">
-              <option value="">（第 {{ i + 1 }} 條）</option>
-              <option v-for="t in lineOptions(s.kind, state[s.key].grade, i)" :key="t" :value="t">{{ t }}</option>
-            </select>
-          </div>
-        </div>
+        </template>
       </div>
-      <div class="text-muted small mt-2">潛能只顯示於說明框，不計入屬性與期望值。</div>
+      <p class="eq-msg pot-hint">潛能只顯示於說明框，不計入屬性與期望值。第 1 條為所選階級，第 2、3 條可為同階或低一階。</p>
     </template>
     <SourceNotice :kms="kms" />
   </div>
 </template>
 
 <style lang="scss" scoped>
-@use './tab-common';
+.pot-error {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 10px;
+  border: 1px solid #e6b3b3;
+  background: #fdf3f3;
+  color: #9b2c2c;
+  font-size: 14px;
+}
+
+.pot-form select:disabled {
+  background-color: #f1f3f6;
+  color: #8a93a0;
+}
+
+.pot-hint {
+  margin-top: 12px;
+  font-size: 12px;
+}
 </style>

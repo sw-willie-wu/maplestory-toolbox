@@ -81,11 +81,11 @@ function addScroll(def: ScrollDef) {
   state.value.scroll.entries.push(entry)
 }
 
-function setAvg(entry: ScrollEntry, key: StatKey, v: string) {
+/** Blank (null) or 0 = not entered. */
+function setAvg(entry: ScrollEntry, key: StatKey, v: number | null) {
   const avg = { ...(entry.avgPerScroll ?? {}) }
-  const n = Number(v)
-  if (v === '' || !Number.isFinite(n) || n === 0) delete avg[key]
-  else avg[key] = n
+  if (v === null || v === 0) delete avg[key]
+  else avg[key] = v
   entry.avgPerScroll = avg
 }
 
@@ -167,11 +167,13 @@ const guess = computed<NoticeItem[]>(() => {
       </div>
       <div v-if="defOf(e.scrollId)?.kind === 'random'" class="sc-avg">
         <span class="sc-avg__lead">平均每張：</span>
-        <label v-for="k in AVG_KEYS" :key="k" class="sc-avg__field">
-          <span>{{ STAT_LABEL[k] }}</span>
-          <input type="text" inputmode="decimal" class="eq-control" :value="e.avgPerScroll?.[k] ?? ''"
-            :data-test="`scroll-avg-${k}`" @input="setAvg(e, k, ($event.target as HTMLInputElement).value)" />
-        </label>
+        <!-- not a <label>: wrapping the stepper would forward caption clicks to its − button -->
+        <div v-for="k in AVG_KEYS" :key="k" class="sc-avg__field">
+          <span :data-test="`scroll-avg-caption-${k}`">{{ STAT_LABEL[k] }}</span>
+          <StepperInput :model-value="e.avgPerScroll?.[k] ?? null" nullable :min="-Infinity" :precision="2"
+            :ariaLabel="`平均每張${STAT_LABEL[k]}`" :data-test="`scroll-avg-${k}`"
+            @update:model-value="setAvg(e, k, $event)" />
+        </div>
       </div>
     </div>
 
@@ -331,8 +333,8 @@ $muted: #7a8597;
   gap: 4px;
   margin: 0;
 
-  input {
-    width: 4.5em;
+  :deep(.eq-stepper) {
+    width: 7.5em;
   }
 }
 

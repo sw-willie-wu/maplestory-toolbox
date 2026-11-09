@@ -87,6 +87,123 @@ $eq-label-col: 6.2em;
   }
 }
 
+// Below the page's 992px breakpoint the form and results fold to label | control, so steppers keep their width.
+@media (max-width: 991.98px) {
+  .eq-form,
+  .eq-res {
+    grid-template-columns: $eq-label-col minmax(0, 1fr);
+  }
+
+  .eq-form .full {
+    grid-column: 2;
+  }
+}
+
+// ---- buttons ----
+.eq-btn {
+  height: $eq-control-h;
+  padding: 0 16px;
+  border: 1px solid $eq-teal;
+  border-radius: 2px;
+  background: $eq-teal;
+  color: #fff;
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+
+  &:hover:not(:disabled) {
+    background: rgb(36, 152, 163);
+  }
+
+  &:disabled {
+    border-color: #c3c9d3;
+    background: #c3c9d3;
+    cursor: not-allowed;
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--color-navbar, rgb(40, 50, 65));
+    outline-offset: 1px;
+  }
+
+  // secondary: outlined
+  &--ghost {
+    border-color: $eq-control-border;
+    background: #fff;
+    color: $eq-text;
+
+    &:hover:not(:disabled) {
+      border-color: $eq-teal;
+      background: #fff;
+    }
+  }
+
+  &--sm {
+    height: 26px;
+    padding: 0 10px;
+    font-size: 13px;
+  }
+}
+
+// text-only action (e.g. 移除 / 帶入目前數值)
+.eq-link {
+  padding: 0 2px;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 400;
+  color: rgb(30, 130, 140);
+  cursor: pointer;
+
+  &:hover {
+    text-decoration: underline;
+  }
+
+  &:focus-visible {
+    outline: 2px solid $eq-teal;
+    outline-offset: 1px;
+  }
+
+  &--danger:hover {
+    color: #c0392b;
+  }
+}
+
+// ---- flat list rows separated by rules ----
+.eq-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 14px;
+
+  > li {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 0;
+
+    & + li {
+      border-top: 1px solid $eq-line;
+    }
+  }
+}
+
+// ---- messages ----
+.eq-msg {
+  margin: 0;
+  font-size: 13px;
+  color: $eq-muted;
+
+  &--warn {
+    color: #a86a00;
+  }
+
+  &--error {
+    color: #c0392b;
+  }
+}
+
 // ---- stepper ----
 .eq-stepper {
   display: flex;
