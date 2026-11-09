@@ -18,10 +18,16 @@ export interface ScrollDef {
   name: string
   kind: 'fixed' | 'random'
   successRate: number
-  /** Gain of one successful scroll. `slot` = EquipData.slot (WZ islot code); `nth` = 1-based success count of this scroll on the item. */
+  /**
+   * Gain of one successful scroll. `slot` = EquipData.slot (WZ islot code).
+   * `nth` = 1-based cumulative count of successful spell traces (any grade, `spellTrace: true`) on the item, this
+   * one included; other scrolls do not count and ignore it (see SCROLLS.ruleSources.traceFourthBonus).
+   */
   stats(level: number, slot: string, choice: ScrollChoice | undefined, nth: number): Stats
   /** ScrollGroup ids (see scrollGroupOf) this scroll can be used on; absent = all. */
   slots?: string[]
+  /** true for 咒文的痕跡 (all grades): these share the item's success counter for the 4th-success bonus. */
+  spellTrace?: boolean
   source?: Sourced['source']
   ref?: string
 }
@@ -128,7 +134,8 @@ function traceStats(tier: Tier, level: number, slot: string, c: ScrollChoice | u
       if (!row) return {}
       const [stat, hp, def] = row
       // 4th successful spell trace on armor (not gloves): +1 ATT/MATT once (S1 in-game text "進行4次強化攻擊力增加：+1";
-      // fixture: 9× and 14× 15% armor show ATT 1, fixed-value scrolls show none).
+      // fixture: 9× and 14× 15% armor show ATT 1, fixed-value scrolls show none). nth counts all spell-trace grades
+      // together; non-trace scrolls do not count — 推測, see SCROLLS.ruleSources.traceFourthBonus.
       return merge(picked(c, stat, hp), { def }, nth === 4 ? { [ak]: 1 } : {})
     }
     case 'gloves': {
@@ -166,6 +173,7 @@ function trace(id: string, name: string, rate: number, tier: Tier, slots?: strin
     successRate: rate,
     stats: (level, slot, choice, nth) => traceStats(tier, level, slot, choice, nth),
     slots,
+    spellTrace: true,
     source: 'TMS',
     ref: TRACE_REF,
   }
@@ -208,9 +216,21 @@ function random(id: string, name: string, rate: number, slots?: string[]): Scrol
 
 const NOT_ACC = ['weapon', 'armor', 'gloves', 'heart']
 
-export const SCROLLS: { items: ScrollDef[] } & Sourced = {
+/** A rule whose exact condition is a reading of player data, not stated by any source (`guess: true` → UI notes「推測」). */
+export type ScrollRuleSource = Sourced & { guess?: boolean; note?: string }
+export type ScrollRuleKey = 'traceFourthBonus'
+
+export const SCROLLS: { items: ScrollDef[]; ruleSources: Record<ScrollRuleKey, ScrollRuleSource> } & Sourced = {
   source: 'TMS',
   ref: TRACE_REF,
+  ruleSources: {
+    traceFourthBonus: {
+      source: 'TMS',
+      ref: TRACE_REF + ' ; research/scroll.md (第 4 次加攻規則)',
+      guess: true,
+      note: '推測：防具第 4 次成功的 +1 攻擊（魔攻）以該件所有咒文的痕跡（不分成功率）累計成功次數計算，僅一次；其他卷軸不計入',
+    },
+  },
   items: [
     trace('trace100', '咒文的痕跡 100%', 1, 0),
     trace('trace70', '咒文的痕跡 70%', 0.7, 1),

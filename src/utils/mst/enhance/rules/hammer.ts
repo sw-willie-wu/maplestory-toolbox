@@ -15,6 +15,8 @@ export interface HammerDef {
   successRate: number | null
   /** null = unknown, or not paid in mesos (golden hammer costs 咒文的痕跡). */
   mesoCost: ((level: number) => number) | null
+  /** 咒文的痕跡 per attempt; absent = not paid in spell traces (or unknown). */
+  traceCost?: number
   /** WZ blockGoldHammer forbids this type. */
   blockedByBlockGoldHammer: boolean
   /** Shown by the Nexon API golden_hammer_flag. */
@@ -40,7 +42,8 @@ export const HAMMER: HammerRules = {
       slotsPerUse: 1,
       max: 1,
       successRate: 1, // S2 "黃金鐵鎚 100%" (TMS player data)
-      mesoCost: null, // paid in 咒文的痕跡 (24000), not mesos
+      mesoCost: null, // paid in 咒文的痕跡, not mesos
+      traceCost: 24000, // S2 "黃金鐵鎚 … 24000 咒文" (TMS player data, see ref)
       blockedByBlockGoldHammer: true,
       setsGoldenHammerFlag: true,
     },
