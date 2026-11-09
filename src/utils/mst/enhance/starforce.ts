@@ -207,13 +207,18 @@ export function solveStarforceChain(
 ): Omit<StarforceExpectation, 'totalWithItemCost'> {
   if (!(from >= 0 && from < to && to <= steps.length)) return { meso: 0, attempts: 0, destroys: 0, pDestroyAtLeastOnce: 0 }
   const n = to
+  // A destroy must land on a star inside the chain; otherwise the destroy branch would silently absorb at the target.
+  steps.slice(0, n).forEach((st, s) => {
+    if (st.destroy > 0 && st.destroyTo >= n)
+      throw new Error(`solveStarforceChain: destroyTo (${st.destroyTo}) >= n (${n}) at star ${s}`)
+  })
   const build = (destroyReturns: boolean) =>
     steps.slice(0, n).map((st, s) => {
       const row = new Array<number>(n).fill(0)
       row[s] += st.success + st.destroy + st.down // = 1 − keep
       if (s + 1 < n) row[s + 1] -= st.success
       if (st.down > 0 && s > 0) row[s - 1] -= st.down
-      if (destroyReturns && st.destroy > 0 && st.destroyTo < n) row[st.destroyTo] -= st.destroy
+      if (destroyReturns && st.destroy > 0) row[st.destroyTo] -= st.destroy
       return row
     })
   const [meso, attempts, destroys] = solveLinear(

@@ -26,6 +26,11 @@ export interface ScrollDef {
   stats(level: number, slot: string, choice: ScrollChoice | undefined, nth: number): Stats
   /** ScrollGroup ids (see scrollGroupOf) this scroll can be used on; absent = all. */
   slots?: string[]
+  /**
+   * Representative item id for the icon (`iconUrl`); one item stands for all versions (weapon / armor, ATT / MATT).
+   * null = no matching item (documented in sources.md). Item ids: sources.md SCROLLS "代表圖示".
+   */
+  iconItemId: number | null
   /** true for 咒文的痕跡 (all grades): these share the item's success counter for the 4th-success bonus. */
   spellTrace?: boolean
   source?: Sourced['source']
@@ -165,7 +170,7 @@ const TRACE_REF =
   'TMS 玩家整理（含遊戲內截圖）：巴哈姆特 https://home.gamer.com.tw/artwork.php?sn=5180421 (S1) ; ' +
   'https://forum.gamer.com.tw/C.php?bsn=7650&snA=1031391 (S2, 2025-02-16)'
 
-function trace(id: string, name: string, rate: number, tier: Tier, slots?: string[]): ScrollDef {
+function trace(id: string, name: string, rate: number, tier: Tier, slots: string[] | undefined, iconItemId: number | null): ScrollDef {
   return {
     id,
     name,
@@ -173,6 +178,7 @@ function trace(id: string, name: string, rate: number, tier: Tier, slots?: strin
     successRate: rate,
     stats: (level, slot, choice, nth) => traceStats(tier, level, slot, choice, nth),
     slots,
+    iconItemId,
     spellTrace: true,
     source: 'TMS',
     ref: TRACE_REF,
@@ -182,7 +188,15 @@ function trace(id: string, name: string, rate: number, tier: Tier, slots?: strin
 // Fixed-value 100% scrolls (S2 「常用卷軸素質一覽表」). Weapon/heart [all stats, att]; armor/gloves [all stats, att]; accessory att.
 // Weapon/heart "屬" = all four stats (fixture 鈦之心 10× V: 110 each / MATT 130). Gloves use the armor values
 // (fixture 永恆*手套 13× B: 26 each / 117 ATT). Armor B = all stats +2 / ATT 9 (fixture 永恆*頭盔 17×: 34 / 153).
-function fixed(id: string, name: string, weapon: [number, number], armor: [number, number], acc: number, slots?: string[]): ScrollDef {
+function fixed(
+  id: string,
+  name: string,
+  weapon: [number, number],
+  armor: [number, number],
+  acc: number,
+  slots: string[] | undefined,
+  iconItemId: number | null,
+): ScrollDef {
   return {
     id,
     name,
@@ -195,12 +209,13 @@ function fixed(id: string, name: string, weapon: [number, number], armor: [numbe
       return merge(allStats(s), a ? { [ak]: a } : {})
     },
     slots,
+    iconItemId,
     source: 'TMS',
     ref: 'TMS 玩家整理 https://forum.gamer.com.tw/C.php?bsn=7650&snA=1031391 (S2, 2025-02-16) ; fixture checks in sources.md',
   }
 }
 
-function random(id: string, name: string, rate: number, slots?: string[]): ScrollDef {
+function random(id: string, name: string, rate: number, slots: string[] | undefined, iconItemId: number | null): ScrollDef {
   return {
     id,
     name,
@@ -209,6 +224,7 @@ function random(id: string, name: string, rate: number, slots?: string[]): Scrol
     // Random-value scrolls: the user enters the average gain per scroll (spec §5).
     stats: (_level, _slot, choice) => ({ ...(choice?.values ?? {}) }),
     slots,
+    iconItemId,
     source: 'TMS',
     ref: 'TMS 玩家整理 https://forum.gamer.com.tw/C.php?bsn=7650&snA=1031391 (S2, 2025-02-16)',
   }
@@ -232,16 +248,17 @@ export const SCROLLS: { items: ScrollDef[]; ruleSources: Record<ScrollRuleKey, S
     },
   },
   items: [
-    trace('trace100', '咒文的痕跡 100%', 1, 0),
-    trace('trace70', '咒文的痕跡 70%', 0.7, 1),
-    trace('trace30', '咒文的痕跡 30%', 0.3, 2),
+    // Icons (sources.md SCROLLS 代表圖示): spell traces → 4001832 咒文的痕跡 (Etc); fixed / random → the one-handed weapon ATT version.
+    trace('trace100', '咒文的痕跡 100%', 1, 0, undefined, 4001832),
+    trace('trace70', '咒文的痕跡 70%', 0.7, 1, undefined, 4001832),
+    trace('trace30', '咒文的痕跡 30%', 0.3, 2, undefined, 4001832),
     // 15%: weapons, armor (incl. shoulder), gloves; not accessories (S2). Heart 15% is not sourced.
-    trace('trace15', '咒文的痕跡 15%', 0.15, 3, ['weapon', 'armor', 'gloves']),
-    fixed('lightning', '極電卷軸', [5, 9], [0, 4], 4),
-    fixed('red', 'RED 卷軸', [8, 10], [0, 5], 5),
-    fixed('x', 'X 卷軸', [10, 12], [0, 7], 7),
-    fixed('v', 'V 卷軸', [11, 13], [0, 8], 8),
-    fixed('b', 'B（究極）卷軸', [14, 14], [2, 9], 9),
+    trace('trace15', '咒文的痕跡 15%', 0.15, 3, ['weapon', 'armor', 'gloves'], 4001832),
+    fixed('lightning', '極電卷軸', [5, 9], [0, 4], 4, undefined, 2613005),
+    fixed('red', 'RED 卷軸', [8, 10], [0, 5], 5, undefined, 2613012),
+    fixed('x', 'X 卷軸', [10, 12], [0, 7], 7, undefined, 2613048),
+    fixed('v', 'V 卷軸', [11, 13], [0, 8], 8, undefined, 2613062),
+    fixed('b', 'B（究極）卷軸', [14, 14], [2, 9], 9, undefined, 2613068),
     // 培羅德卷軸 (S2 "3 / 4"): accessories of the 頂級培羅德 set only (fixture 頂級培羅德戒指 3×: 9 each / 12 ATT)
     {
       id: 'pensalir',
@@ -251,18 +268,19 @@ export const SCROLLS: { items: ScrollDef[]; ruleSources: Record<ScrollRuleKey, S
       stats: (_level, slot, choice) =>
         scrollGroupOf(slot) === 'accessory' ? merge(allStats(3), { [attKey(choice)]: 4 }) : {},
       slots: ['accessory'],
+      iconItemId: 2615001, // 培羅德高級卷軸 (AllStatus +3 / ATT +4)
       source: 'TMS',
       ref: 'TMS 玩家整理 https://forum.gamer.com.tw/C.php?bsn=7650&snA=1031391 (S2, 2025-02-16)',
     },
-    random('destiny', '命運卷軸（隨機）', 1, NOT_ACC),
-    random('savior', '救世卷軸（隨機）', 1, NOT_ACC),
-    random('chaosAmazing', '卡勒馬驚奇樂觀的混沌卷軸 60%（隨機）', 0.6),
+    random('destiny', '命運卷軸（隨機）', 1, NOT_ACC, 2613076),
+    random('savior', '救世卷軸（隨機）', 1, NOT_ACC, 2613086),
+    random('chaosAmazing', '卡勒馬驚奇樂觀的混沌卷軸 60%（隨機）', 0.6, undefined, 2049177),
   ],
 }
 
 
-export const RECOVERY: { items: { id: string; name: string; successRate: number }[] } & Sourced = {
+export const RECOVERY: { items: { id: string; name: string; successRate: number; iconItemId: number | null }[] } & Sourced = {
   source: 'TMS',
   ref: 'TMS 玩家整理 https://forum.gamer.com.tw/C.php?bsn=7650&snA=1031391 (S2, 2025-02-16: 純白 100%, 20000 咒文)',
-  items: [{ id: 'cleanSlate', name: '純白卷軸', successRate: 1 }],
+  items: [{ id: 'cleanSlate', name: '純白卷軸', successRate: 1, iconItemId: 2049025 }], // 2049025 純白的卷軸100%
 }

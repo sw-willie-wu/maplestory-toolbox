@@ -1,7 +1,10 @@
 // Scroll slots, scroll stats, recovery expectation and hammers (Task 6).
+import { readFileSync } from 'node:fs'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import { hammerExpectation, hammerUses, type HammerState } from '../hammer'
-import { SCROLLS } from '../rules/scroll'
+import { RECOVERY, SCROLLS } from '../rules/scroll'
 import { scrollExpectation, scrollStats, scrollSummary, totalSlots, type ScrollState } from '../scroll'
 import type { EquipData, Stats } from '../types'
 import fixture from './fixtures/nexon-items.json'
@@ -300,5 +303,19 @@ describe('scrollExpectation', () => {
       scrollsUsed: 4 / 0.15,
       recoveryUsed: 0,
     })
+  })
+})
+
+describe('scroll icon item ids', () => {
+  it('every scroll has a well-formed icon item id', () => {
+    const all = [...SCROLLS.items, ...RECOVERY.items]
+    for (const s of all) {
+      const id = s.iconItemId
+      expect(id === null || (Number.isInteger(id) && id >= 1_000_000 && id <= 9_999_999), `${s.id}: ${id}`).toBe(true)
+    }
+    const nulls = all.filter((s) => s.iconItemId === null)
+    expect(nulls.length).toBeLessThanOrEqual(2)
+    const sources = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '../rules/sources.md'), 'utf8')
+    for (const s of nulls) expect(sources, `${s.id} null icon not documented`).toContain(s.id)
   })
 })

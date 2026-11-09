@@ -199,3 +199,29 @@ describe('solveStarforceChain — matches reference values', () => {
     expect(solveStarforceChain(steps, 17, 18).attempts).toBeCloseTo(102.51, 1)
   })
 })
+
+describe('solveStarforceChain — destroyTo guard', () => {
+  it('safeguard rule is TMS-sourced', () => {
+    expect(STARFORCE.ruleSources.safeguard.source).toBe('TMS')
+    expect(STARFORCE.ruleSources.safeguard.ref).toContain('https://maplestory.beanfun.com/bulletin?bid=74681')
+  })
+
+  it('solveStarforceChain throws when a destroying step returns past the target', () => {
+    const steps: StarforceStep[] = [
+      { success: 0.5, destroy: 0, down: 0, cost: 1, destroyTo: 0 },
+      { success: 0.5, destroy: 0.1, down: 0, cost: 1, destroyTo: 2 }, // destroyTo 2 >= n = 2
+    ]
+    expect(() => solveStarforceChain(steps, 0, 2)).toThrow(/destroyTo/)
+    // destroyTo inside the chain is fine
+    expect(() => solveStarforceChain([steps[0], { ...steps[1], destroyTo: 0 }], 0, 2)).not.toThrow()
+  })
+
+  it('low-star chains do not throw', () => {
+    // Real tmsStep steps (built by starforceExpectation): destroyReturnStar() is always 12, but these steps have destroy 0.
+    expect(STARFORCE.destroyReturnStar(5)).toBe(12)
+    for (const to of [10, 12]) {
+      expect(() => starforceExpectation(200, 0, to, plain)).not.toThrow()
+      expect(starforceExpectation(200, 0, to, plain).destroys).toBe(0)
+    }
+  })
+})

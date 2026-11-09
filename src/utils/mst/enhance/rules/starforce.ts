@@ -165,6 +165,7 @@ export type StarforceRuleKey =
   | 'attTable'
   | 'usesWeaponTable'
   | 'astraDefCap'
+  | 'safeguard'
 
 export interface StarforceRules extends Sourced {
   /** false for superior equipment (different, unsourced rules) and equipment that cannot be star-forced. */
@@ -309,6 +310,12 @@ export const STARFORCE: StarforceRules = {
       ref:
         'fixture (sources.md STARFORCE): weapons / 1354xxx 靈符 → weapon table, shields / 172xxxx → non-weapon table; ' +
         '1342xxx katara (dual blade) non-weapon table is UNVERIFIED (no fixture sample), as is the rest of 135xxxx',
+    },
+    safeguard: {
+      source: 'TMS',
+      ref:
+        '新楓之谷《0626(四) 星力系統改編事前說明》https://maplestory.beanfun.com/bulletin?bid=74681 (2025-06-26, V272): ' +
+        '防爆 15→16 ~ 17→18, +200% base cost',
     },
     astraDefCap: {
       source: 'TMS',

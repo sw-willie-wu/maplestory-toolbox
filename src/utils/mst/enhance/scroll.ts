@@ -213,7 +213,7 @@ function statsEqual(a: Stats, b: Stats): boolean {
  * residual, on residual > remaining slots x best per-slot gain of the remaining variants (per stat; HP/DEF come only
  * from spell traces, so they bound the trace count), on a per-stat reachability relaxation (subset-sum DP), on two combined weighted-sum bounds (unit weights; 1/target
  * weights), and memoises failed (variant, slots left, trace count capped at 4, residual) states. Search and
- * post-processing share one deadline (REVERSE_TIME_BUDGET_MS). At most REVERSE_MAX_RESULTS combinations are returned,
+ * post-processing share one deadline (REVERSE_TIME_BUDGET_MS, or `opts.timeBudgetMs` — tests only). At most REVERSE_MAX_RESULTS combinations are returned,
  * fewest distinct entries first; `truncated` = more existed than returned, `timedOut` = the budget ran out (results
  * may be incomplete).
  */
@@ -225,8 +225,9 @@ export function reverseScrollDetailed(
   equip: EquipData,
   observed: Stats,
   usedSlots: number,
+  opts?: { timeBudgetMs?: number },
 ): { results: ScrollEntry[][]; truncated: boolean; timedOut: boolean } {
-  const deadline = Date.now() + REVERSE_TIME_BUDGET_MS
+  const deadline = Date.now() + (opts?.timeBudgetMs ?? REVERSE_TIME_BUDGET_MS)
   const none = { results: [] as ScrollEntry[][], truncated: false, timedOut: false }
   const n = Math.floor(usedSlots)
   if (!Number.isFinite(n) || n < 0 || n > REVERSE_MAX_USED_SLOTS) return none
