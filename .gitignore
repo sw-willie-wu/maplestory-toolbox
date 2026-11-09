@@ -30,3 +30,10 @@ coverage
 *.tsbuildinfo
 
 old/
+# WZ exporter build output and downloaded WzComparerR2
+tools/wz-export/lib/
+tools/wz-export/bin/
+tools/wz-export/obj/
+
+.playwright-mcp/
+.superpowers/

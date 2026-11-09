@@ -6,7 +6,7 @@ import CaretDownIcon from './icons/IconCaretDown.vue'
 <template>
   <div>
     <nav class="navbar navbar-expand-lg fixed-top navbar-dark">
-      <div class="container-lg">
+      <div class="container-fluid site-container">
         <router-link to="/" class="navbar-brand"><img class="icon-brand" src="@/assets/img/brand.png" /></router-link>
         <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarSupportedContent"
           aria-controls="navbarSupportedContent" aria-expanded="false" aria-label="Toggle navigation">
@@ -24,7 +24,7 @@ import CaretDownIcon from './icons/IconCaretDown.vue'
                 <li>
                   <router-link to="/tools/rune-force-calculator" class="dropdown-item">符文力量計算機</router-link>
                 </li>
-                <li><router-link class="dropdown-item" to="#">裝備強化計算機</router-link></li>
+                <li><router-link class="dropdown-item" to="/tools/equip-enhance-calculator">裝備強化計算機</router-link></li>
                 <li><router-link class="dropdown-item" to="/tools/hexa-matrix-calculator">六轉矩陣計算機</router-link></li>
               </ul>
             </li>

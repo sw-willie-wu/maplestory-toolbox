@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, reactive, computed } from 'vue'
 import { Rune } from '@/utils/mst/rune'
+import { iconUrl } from '@/utils/mst/icon'
 import runeData from '@/assets/data/rune.json'
 
 const arc = reactive({
@@ -84,7 +85,7 @@ const autMoneyNeed = computed(() => moneyFormatter(runeMoneyNeed(aut)))
       <div v-for="area in isARC ? arc : aut" class="col-12 col-md-6 col-xl-4">
         <div class="card">
           <div class="card-content">
-            <img :src="`https://maplestory-toolbox-api.vercel.app/icon/${area.id}`" class="icon">
+            <img :src="iconUrl(area.id)" :alt="area.name" class="icon">
             <b>{{ area.name }}</b>
             <hr>
             <div class="row align-items-center g-0">

@@ -6,7 +6,7 @@ import Footer from '@/components/Footer.vue'
 <template>
   <div class="wrapper">
     <Navbar />
-    <div class="container-lg content">
+    <div class="site-container content">
       <RouterView />
     </div>
     <Footer class="stick-bottom"></Footer>
@@ -18,6 +18,15 @@ import Footer from '@/components/Footer.vue'
   display: flex;
   flex-direction: column;
   min-height: 100vh;
+}
+
+// 全站內容寬度：導覽列與內容共用，左右緣對齊
+.site-container,
+.container-fluid.site-container {
+  width: 100%;
+  max-width: 1366px;
+  margin-inline: auto;
+  padding-inline: 16px;
 }
 
 .content {

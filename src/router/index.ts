@@ -16,6 +16,12 @@ const router = createRouter({
       component: () => import('@/views/ToolView/RuneForceView.vue')
     },
     {
+      path: '/tools/equip-enhance-calculator',
+      name: 'EquipEnhance',
+      meta: { title: '裝備強化計算機' },
+      component: () => import('@/views/ToolView/EquipEnhanceView.vue')
+    },
+    {
       path: '/tools/hexa-matrix-calculator',
       name: 'HexaMatrix',
       meta: { title: '六轉矩陣計算機' },
