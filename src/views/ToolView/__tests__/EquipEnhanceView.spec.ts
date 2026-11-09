@@ -2,10 +2,10 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import { readFileSync } from 'node:fs'
 import EquipEnhanceView from '../EquipEnhanceView.vue'
-import EquipSelector from '@/components/equip/EquipSelector.vue'
 import EquipTooltip from '@/components/equip/EquipTooltip.vue'
 import EnhanceEditor from '@/components/equip/EnhanceEditor.vue'
 import { DATA_DIR } from '@/utils/mst/enhance/__tests__/helpers'
+import type { IndexEntry } from '@/utils/mst/enhance/types'
 
 const PUBLIC = '/data/tms-v283'
 const diskFetch = (async (input: RequestInfo | URL) => {
@@ -18,8 +18,21 @@ const diskFetch = (async (input: RequestInfo | URL) => {
   }
 }) as typeof fetch
 
+/** Tool-scope entries (canonical && !cash && enhanceable) of the real index, in index.json order (= randomPick order). */
+const TOOL = (JSON.parse(readFileSync(DATA_DIR + 'index.json', 'utf8')) as IndexEntry[]).filter(
+  (e) => e.canonical && !e.cash && e.enhanceable
+)
+
+/** Makes the page's on-load randomPick() land on `id` (until Task 7 adds the picker, the only way to select). */
+function pickOnLoad(id: number) {
+  const i = TOOL.findIndex((e) => e.id === id)
+  if (i < 0) throw new Error(`${id} is not in the tool scope`)
+  vi.spyOn(Math, 'random').mockReturnValue((i + 0.5) / TOOL.length)
+}
+
 afterEach(() => {
   vi.unstubAllGlobals()
+  vi.restoreAllMocks()
 })
 
 describe('EquipEnhanceView', () => {
@@ -37,12 +50,19 @@ describe('EquipEnhanceView', () => {
     expect(w.find('[data-test="load-error"]').text()).toContain('HTTP 500')
   })
 
+  it('picks a random tool-scope equipment on load', async () => {
+    vi.stubGlobal('fetch', diskFetch)
+    vi.spyOn(Math, 'random').mockReturnValue(0)
+    const w = mount(EquipEnhanceView)
+    expect(w.findComponent(EquipTooltip).exists()).toBe(false)
+    await flushPromises()
+    expect(w.findComponent(EquipTooltip).text()).toContain(TOOL[0].name)
+  })
+
   it('renders the tooltip for the selected equipment', async () => {
     vi.stubGlobal('fetch', diskFetch)
+    pickOnLoad(1113211)
     const w = mount(EquipEnhanceView)
-    await flushPromises()
-    expect(w.findComponent(EquipTooltip).exists()).toBe(false)
-    w.findComponent(EquipSelector).vm.$emit('select', 1113211)
     await flushPromises()
     const tip = w.findComponent(EquipTooltip)
     expect(tip.exists()).toBe(true)
@@ -57,9 +77,8 @@ describe('EquipEnhanceView', () => {
 describe('EquipEnhanceView with the editor', () => {
   async function selected(id: number, fetchImpl: typeof fetch = diskFetch) {
     vi.stubGlobal('fetch', fetchImpl)
+    pickOnLoad(id)
     const w = mount(EquipEnhanceView)
-    await flushPromises()
-    w.findComponent(EquipSelector).vm.$emit('select', id)
     await flushPromises()
     return w
   }
@@ -87,41 +106,9 @@ describe('EquipEnhanceView with the editor', () => {
     expect(w.findComponent(EquipTooltip).findAll('.star.lit')).toHaveLength(25)
   })
 
-  it('resets the enhancement state when another item is selected', async () => {
-    const w = await selected(1113211)
-    await w.find('[data-test="sf-target"]').setValue('10')
-    await flushPromises()
-    expect(w.findComponent(EquipTooltip).findAll('.star.lit')).toHaveLength(10)
-    w.findComponent(EquipSelector).vm.$emit('select', 1005983)
-    await flushPromises()
-    expect(w.findComponent(EquipTooltip).text()).toContain('永恆盜賊頭巾')
-    expect(w.findComponent(EquipTooltip).findAll('.star.lit')).toHaveLength(0)
-    expect((w.find('[data-test="sf-target"]').element as HTMLInputElement).value).toBe('0')
-  })
-
-  it('keeps the latest selection when an earlier load resolves last (race guard)', async () => {
-    const gates = new Map<string, () => void>()
-    const gatedFetch = (async (input: RequestInfo | URL) => {
-      const url = String(input)
-      if (url.includes('/equip/')) await new Promise<void>((r) => gates.set(url.slice(url.lastIndexOf('/') + 1), r))
-      return diskFetch(input)
-    }) as typeof fetch
-    vi.stubGlobal('fetch', gatedFetch)
-    const w = mount(EquipEnhanceView)
-    await flushPromises()
-    const sel = w.findComponent(EquipSelector)
-    sel.vm.$emit('select', 1113211) // Ring.json
-    await flushPromises()
-    sel.vm.$emit('select', 1005983) // Cap.json
-    await flushPromises()
-    expect([...gates.keys()].sort()).toEqual(['Cap.json', 'Ring.json'])
-    gates.get('Cap.json')!()
-    await flushPromises()
-    gates.get('Ring.json')!()
-    await flushPromises()
-    expect(w.findComponent(EquipTooltip).text()).toContain('永恆盜賊頭巾')
-    expect(w.findComponent(EquipTooltip).text()).not.toContain('天上的氣息')
-  })
+  // Need a second selection (EquipSelector removed in Task 3); Task 7 rewrites them with EquipPicker.
+  it.todo('resets the enhancement state when another item is selected')
+  it.todo('keeps the latest selection when an earlier load resolves last (race guard)')
 
   describe('mobile layout', () => {
     afterEach(() => {

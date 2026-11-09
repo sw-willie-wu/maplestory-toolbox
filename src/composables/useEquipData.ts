@@ -10,32 +10,22 @@ import type {
   SetInfo
 } from '@/utils/mst/enhance/types'
 
-export interface EquipFilter {
-  /** tuc > 0 */
-  scrollable: boolean
-  /** UI chip「包含活動期限版本」; false → canonical entries only. */
-  includeVariants: boolean
-  /** entry.jobs === 'all' or includes job */
-  job: JobGroup | null
-  /** setId !== null */
-  setOnly: boolean
-}
+/** Job dropdown value. 'common' (共用) = no job filter; a JobGroup = items that job can wear (incl. jobs 'all'). */
+export type JobChoice = 'common' | JobGroup
 
-/**
- * All filters off (canonical entries only). Frozen: never mutate it — copy first, e.g.
- * `reactive({ ...DEFAULT_FILTER })` or `{ ...DEFAULT_FILTER, job: 'thief' }`.
- */
-export const DEFAULT_FILTER: EquipFilter = Object.freeze({
-  scrollable: false,
-  includeVariants: false,
-  job: null,
-  setOnly: false
-})
+export const JOB_CHOICES: readonly JobChoice[] = Object.freeze(['common', 'warrior', 'magician', 'bowman', 'thief', 'pirate'])
+
+/** Cascade position of an entry: level bucket, category id ('__none' when searchCategory is null), detail (null = 未分類). */
+export interface EquipPath {
+  level: number
+  category: string
+  detail: string | null
+}
 
 export interface CategoryNode {
   category: SearchCategory
   details: SearchDetail[]
-  /** Some items of this category (in the bucket) have searchDetail null → names(level, category, null, f). */
+  /** Some items of this category (in the bucket) have searchDetail null → names(level, category, null, job). */
   hasUndetailed: boolean
 }
 
@@ -55,30 +45,37 @@ export const bucketOf = (level: number) => Math.floor(level / 10) * 10
 
 interface DerivedState {
   byId: Map<number, IndexEntry>
-  /** includeVariants=false */
-  canonical: IndexEntry[]
-  /** includeVariants=true: canonical + labelled variants ('' label on a non-canonical = duplicate → dropped). */
-  withVariants: IndexEntry[]
+  /** Tool scope (the only entries the calculator lists): canonical && !cash && enhanceable, in index.json order. */
+  tool: IndexEntry[]
+  /** Tool-scope entries per level bucket. */
+  byBucket: Map<number, IndexEntry[]>
+  /** Non-empty level buckets, ascending. */
+  buckets: number[]
   /** id → label shown by displayName (variantLabel, plus ` #id` when it repeats within its (slot, name, cash) group). */
   labels: Map<number, string>
   slotNames: Record<string, string>
   sets: Record<string, SetInfo>
   categories: SearchCategory[]
+  categoryById: Map<string, SearchCategory>
   specJobs: Map<number, JobsData['specJobs'][number]>
 }
 
 function emptyState(): DerivedState {
   return {
     byId: new Map(),
-    canonical: [],
-    withVariants: [],
+    tool: [],
+    byBucket: new Map(),
+    buckets: [],
     labels: new Map(),
     slotNames: {},
     sets: {},
     categories: [],
+    categoryById: new Map(),
     specJobs: new Map()
   }
 }
+
+const inToolScope = (e: IndexEntry) => e.canonical && !e.cash && e.enhanceable
 
 function buildState(
   entries: IndexEntry[],
@@ -87,9 +84,8 @@ function buildState(
   categories: SearchCategory[],
   jobs: JobsData
 ): DerivedState {
-  const withVariants = entries.filter((e) => e.canonical || e.variantLabel !== '')
   const groups = new Map<string, IndexEntry[]>()
-  for (const e of withVariants) {
+  for (const e of entries) {
     if (e.variantLabel === '') continue
     const key = `${e.slot}\u0000${e.name}\u0000${e.cash}\u0000${e.variantLabel}`
     const g = groups.get(key)
@@ -100,14 +96,24 @@ function buildState(
   for (const g of groups.values()) {
     for (const e of g) labels.set(e.id, g.length > 1 ? `${e.variantLabel} #${e.id}` : e.variantLabel)
   }
+  const tool = entries.filter(inToolScope)
+  const byBucket = new Map<number, IndexEntry[]>()
+  for (const e of tool) {
+    const b = bucketOf(e.level)
+    const list = byBucket.get(b)
+    if (list) list.push(e)
+    else byBucket.set(b, [e])
+  }
   return {
     byId: new Map(entries.map((e) => [e.id, e])),
-    canonical: entries.filter((e) => e.canonical),
-    withVariants,
+    tool,
+    byBucket,
+    buckets: [...byBucket.keys()].sort((a, b) => a - b),
     labels,
     slotNames,
     sets,
     categories,
+    categoryById: new Map(categories.map((c) => [c.id, c])),
     specJobs: new Map(jobs.specJobs.map((j) => [j.id, j]))
   }
 }
@@ -146,7 +152,7 @@ export function useEquipData(baseUrl = '/data/tms-v283', fetchImpl: typeof fetch
     loading.value = true
     error.value = null
     try {
-      const [m, idx, slots, setData, cats, jobs] = await Promise.all([
+      const [m, idx, slots, setData, cats, jobData] = await Promise.all([
         getJson<DataMeta>('meta.json'),
         getJson<IndexEntry[]>('index.json'),
         getJson<Record<string, string>>('slot-names.json'),
@@ -154,7 +160,7 @@ export function useEquipData(baseUrl = '/data/tms-v283', fetchImpl: typeof fetch
         getJson<SearchCategory[]>('categories.json'),
         getJson<JobsData>('jobs.json')
       ])
-      state.value = buildState(idx, slots, setData, cats, jobs)
+      state.value = buildState(idx, slots, setData, cats, jobData)
       meta.value = m
       index.value = idx
     } catch (e) {
@@ -204,84 +210,121 @@ export function useEquipData(baseUrl = '/data/tms-v283', fetchImpl: typeof fetch
     return label ? `${e.name}（${label}）` : e.name
   }
 
-  function passes(e: IndexEntry, f: EquipFilter): boolean {
-    if (f.scrollable && e.tuc <= 0) return false
-    if (f.setOnly && e.setId === null) return false
-    if (f.job && e.jobs !== 'all' && !e.jobs.includes(f.job)) return false
-    return true
+  function wearable(e: IndexEntry, job: JobChoice): boolean {
+    return job === 'common' || e.jobs === 'all' || e.jobs.includes(job)
   }
 
-  function filtered(f: EquipFilter): IndexEntry[] {
-    const s = state.value
-    return (f.includeVariants ? s.withVariants : s.canonical).filter((e) => passes(e, f))
+  /** Category id of an entry in the cascade ('__none' for searchCategory null). */
+  const categoryOf = (e: IndexEntry) => e.searchCategory ?? NO_CATEGORY_ID
+  /** Detail of an entry in the cascade (null = 未分類; always null under '__none'). */
+  const detailOf = (e: IndexEntry) => (e.searchCategory === null ? null : e.searchDetail)
+
+  /**
+   * Tool-scope name search (canonical && !cash && enhanceable). Matches names only — never ids — case-insensitively;
+   * exact name first, then level desc, then id.
+   */
+  function search(q: string, limit = 50): IndexEntry[] {
+    const needle = q.trim().toLowerCase()
+    if (!needle) return []
+    const exact = (e: IndexEntry) => (e.name.toLowerCase() === needle ? 0 : 1)
+    return state.value.tool
+      .filter((e) => e.name.toLowerCase().includes(needle))
+      .sort((a, b) => exact(a) - exact(b) || b.level - a.level || a.id - b.id)
+      .slice(0, limit)
+  }
+
+  /** Non-empty level buckets of the tool scope, ascending. */
+  function levelBuckets(): number[] {
+    return [...state.value.buckets]
+  }
+
+  function inBucket(level: number): IndexEntry[] {
+    return state.value.byBucket.get(bucketOf(level)) ?? []
+  }
+
+  function inDetail(level: number, category: string, detail: string | null): IndexEntry[] {
+    return inBucket(level).filter((e) => categoryOf(e) === category && detailOf(e) === detail)
   }
 
   /**
-   * A numeric query equal to an id returns that entry even when it is hidden by includeVariants=false (or is a
-   * collapsed ''-label duplicate); the other filters still apply.
+   * Non-empty categories of a bucket in categories.json order, '__none' (其他) last. Ids missing from categories.json
+   * (not expected) are appended before '__none' so no entry becomes unreachable.
    */
-  function search(q: string, f: EquipFilter, limit = 50): IndexEntry[] {
-    const needle = q.trim().toLowerCase()
-    if (!needle) return []
-    const hits = filtered(f).filter((e) => e.name.toLowerCase().includes(needle))
-    if (/^\d+$/.test(needle)) {
-      const byIdHit = state.value.byId.get(Number(needle))
-      if (byIdHit && passes(byIdHit, f) && !hits.includes(byIdHit)) hits.push(byIdHit)
-    }
-    const exact = (e: IndexEntry) => (e.name.toLowerCase() === needle ? 0 : 1)
-    hits.sort(
-      (a, b) =>
-        exact(a) - exact(b) ||
-        Number(b.canonical) - Number(a.canonical) ||
-        b.level - a.level ||
-        a.id - b.id
-    )
-    return hits.slice(0, limit)
-  }
-
-  function levelBuckets(f: EquipFilter): number[] {
-    return [...new Set(filtered(f).map((e) => bucketOf(e.level)))].sort((a, b) => a - b)
-  }
-
-  function inBucket(level: number, f: EquipFilter): IndexEntry[] {
-    const b = bucketOf(level)
-    return filtered(f).filter((e) => bucketOf(e.level) === b)
-  }
-
-  function categories(level: number, f: EquipFilter): CategoryNode[] {
-    // category id → detail ids present (null = undetailed)
+  function categories(level: number): CategoryNode[] {
     const present = new Map<string, Set<string | null>>()
-    for (const e of inBucket(level, f)) {
-      const c = e.searchCategory ?? NO_CATEGORY_ID
+    for (const e of inBucket(level)) {
+      const c = categoryOf(e)
       let s = present.get(c)
       if (!s) present.set(c, (s = new Set()))
-      s.add(e.searchCategory === null ? null : e.searchDetail)
+      s.add(detailOf(e))
     }
     const nodes: CategoryNode[] = []
+    const node = (cat: SearchCategory, s: Set<string | null>): CategoryNode => ({
+      category: cat,
+      details: cat.details.filter((d) => s.has(d.id)),
+      hasUndetailed: s.has(null)
+    })
     for (const cat of state.value.categories) {
       const s = present.get(cat.id)
-      if (!s) continue
-      nodes.push({ category: cat, details: cat.details.filter((d) => s.has(d.id)), hasUndetailed: s.has(null) })
+      if (s) nodes.push(node(cat, s))
+    }
+    for (const [id, s] of present) {
+      if (id !== NO_CATEGORY_ID && !state.value.categoryById.has(id)) nodes.push(node({ id, name: id, details: [] }, s))
     }
     if (present.has(NO_CATEGORY_ID)) nodes.push({ category: NO_CATEGORY, details: [], hasUndetailed: true })
     return nodes
   }
 
-  /** detail null = items of that category with searchDetail null; category '__none' = items with searchCategory null. */
-  function names(level: number, category: string, detail: string | null, f: EquipFilter): IndexEntry[] {
-    const match =
-      category === NO_CATEGORY_ID
-        ? (e: IndexEntry) => e.searchCategory === null
-        : (e: IndexEntry) => e.searchCategory === category && e.searchDetail === detail
-    return inBucket(level, f)
-      .filter(match)
-      .sort(
-        (a, b) =>
-          a.level - b.level ||
-          a.name.localeCompare(b.name, 'zh-Hant') ||
-          Number(b.canonical) - Number(a.canonical) ||
-          a.id - b.id
-      )
+  /**
+   * Non-empty details of (bucket, category) in official order, null (未分類) last. Detail ids missing from
+   * categories.json (not expected) are appended before null.
+   */
+  function details(level: number, category: string): (string | null)[] {
+    const present = new Set<string | null>()
+    for (const e of inBucket(level)) if (categoryOf(e) === category) present.add(detailOf(e))
+    const official = state.value.categoryById.get(category)?.details.map((d) => d.id) ?? []
+    const out: (string | null)[] = official.filter((id) => present.has(id))
+    for (const id of present) if (id !== null && !out.includes(id)) out.push(id)
+    if (present.has(null)) out.push(null)
+    return out
+  }
+
+  /** Job choices with at least one wearable entry under (bucket, category, detail): 'common' first, JOB_CHOICES order. */
+  function jobs(level: number, category: string, detail: string | null): JobChoice[] {
+    const list = inDetail(level, category, detail)
+    return JOB_CHOICES.filter((j) => list.some((e) => wearable(e, j)))
+  }
+
+  /**
+   * Tool-scope entries of (bucket, category, detail) wearable by job ('common' = all), sorted level, name, id.
+   * detail null = items of that category with searchDetail null; category '__none' = items with searchCategory null.
+   */
+  function names(level: number, category: string, detail: string | null, job: JobChoice): IndexEntry[] {
+    return inDetail(level, category, detail)
+      .filter((e) => wearable(e, job))
+      .sort((a, b) => a.level - b.level || a.name.localeCompare(b.name, 'zh-Hant') || a.id - b.id)
+  }
+
+  function pathOf(e: IndexEntry): EquipPath {
+    return { level: bucketOf(e.level), category: categoryOf(e), detail: detailOf(e) }
+  }
+
+  /** A uniformly random tool-scope entry (index.json order: rng 0 → first, rng → 1 → last); null before load. */
+  function randomPick(rng: () => number = Math.random): IndexEntry | null {
+    const { tool } = state.value
+    if (tool.length === 0) return null
+    const i = Math.min(tool.length - 1, Math.max(0, Math.floor(rng() * tool.length)))
+    return tool[i]
+  }
+
+  function categoryName(id: string): string {
+    if (id === NO_CATEGORY_ID) return NO_CATEGORY.name
+    return state.value.categoryById.get(id)?.name ?? id
+  }
+
+  function detailName(category: string, detail: string | null): string {
+    if (detail === null) return '(未分類)'
+    return state.value.categoryById.get(category)?.details.find((d) => d.id === detail)?.name ?? detail
   }
 
   function slotName(code: string): string {
@@ -316,7 +359,13 @@ export function useEquipData(baseUrl = '/data/tms-v283', fetchImpl: typeof fetch
     search,
     levelBuckets,
     categories,
+    details,
+    jobs,
     names,
+    pathOf,
+    randomPick,
+    categoryName,
+    detailName,
     slotName,
     setInfo,
     jobName

@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, shallowRef } from 'vue'
 import EnhanceEditor from '@/components/equip/EnhanceEditor.vue'
-import EquipSelector from '@/components/equip/EquipSelector.vue'
 import EquipTooltip from '@/components/equip/EquipTooltip.vue'
 import { tooltipSummary } from '@/components/equip/summary'
 import { useEquipData } from '@/composables/useEquipData'
@@ -69,7 +68,11 @@ const onMediaChange = (ev: MediaQueryListEvent) => (isMobile.value = ev.matches)
 
 onMounted(() => {
   mql?.addEventListener?.('change', onMediaChange)
-  data.load()
+  // No selector until Task 7's picker: start with a random tool-scope equip (spec: 進頁隨機選一件).
+  data.load().then(() => {
+    const e = data.randomPick()
+    if (e && !equip.value) onSelect(e.id)
+  })
 })
 onBeforeUnmount(() => mql?.removeEventListener?.('change', onMediaChange))
 </script>
@@ -85,9 +88,6 @@ onBeforeUnmount(() => mql?.removeEventListener?.('change', onMediaChange))
       資料載入失敗：{{ error }}
     </div>
     <div v-else-if="loading" class="text-muted mb-2">資料載入中…</div>
-
-    <!-- A -->
-    <EquipSelector :data="data" class="mb-3" @select="onSelect" />
 
     <div v-if="selectError" class="alert alert-warning py-2" role="alert" data-test="select-error">{{ selectError }}</div>
 
