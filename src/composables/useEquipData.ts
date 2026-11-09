@@ -1,4 +1,5 @@
 import { ref, shallowRef } from 'vue'
+import { POTENTIAL, type PotentialOption, type RawPotentialOption } from '@/utils/mst/enhance/rules/potential'
 import type {
   EquipData,
   IndexEntry,
@@ -49,7 +50,8 @@ export interface DataMeta {
 export const NO_CATEGORY_ID = '__none'
 const NO_CATEGORY: SearchCategory = Object.freeze({ id: NO_CATEGORY_ID, name: '其他', details: [] })
 
-const bucketOf = (level: number) => Math.floor(level / 10) * 10
+/** Level bucket (dropdown value) of an item level: Lv.100–109 → 100. */
+export const bucketOf = (level: number) => Math.floor(level / 10) * 10
 
 interface DerivedState {
   byId: Map<number, IndexEntry>
@@ -189,6 +191,14 @@ export function useEquipData(baseUrl = '/data/tms-v283', fetchImpl: typeof fetch
     return data
   }
 
+  let potentialPromise: Promise<PotentialOption[]> | null = null
+  /** potential-options.json through POTENTIAL.buildOptions; fetched once (retried after a failure). */
+  function loadPotentialOptions(): Promise<PotentialOption[]> {
+    potentialPromise ??= getJson<RawPotentialOption[]>('potential-options.json').then((raw) => POTENTIAL.buildOptions(raw))
+    potentialPromise.catch(() => (potentialPromise = null))
+    return potentialPromise
+  }
+
   function displayName(e: IndexEntry): string {
     const label = state.value.labels.get(e.id) ?? e.variantLabel
     return label ? `${e.name}（${label}）` : e.name
@@ -301,6 +311,7 @@ export function useEquipData(baseUrl = '/data/tms-v283', fetchImpl: typeof fetch
     loading,
     load,
     loadEquip,
+    loadPotentialOptions,
     displayName,
     search,
     levelBuckets,

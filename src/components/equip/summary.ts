@@ -12,7 +12,7 @@ export interface TooltipSummary {
   /** STARFORCE.maxStarByLevel(level); 0 when star force is not supported. */
   maxStar: number
   scroll: { used: number; remaining: number; recoverable: number }
-  /** Hammer types that can apply to this item (blocked types are left out). */
+  /** Hammer types actually used on this item (applied > 0), as in game (rows with 0 uses are not shown). */
   hammer: { id: string; name: string; used: number; max: number }[]
   flameLocked: boolean
 }
@@ -26,13 +26,13 @@ export function tooltipSummary(
   const { used, remaining, recoverable } = scrollSummary(equip, state.scroll, state.hammer)
   const uses = hammerUses(equip, state.hammer)
   const hammer = HAMMER.types
-    .filter((def) => !(def.blockedByBlockGoldHammer && equip.blockGoldHammer))
     .map((def) => ({
       id: def.id,
       name: def.name,
       used: uses.find((u) => u.id === def.id)?.applied ?? 0,
       max: def.max
     }))
+    .filter((h) => h.used > 0)
   return {
     star: breakdown.star,
     maxStar: STARFORCE.supports(equip) ? STARFORCE.maxStarByLevel(equip.level) : 0,

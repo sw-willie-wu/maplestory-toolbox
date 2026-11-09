@@ -190,7 +190,7 @@ const potentials = computed(() =>
             {{ summary.scroll.used }}次（剩餘{{ summary.scroll.remaining }}次，可恢復{{ summary.scroll.recoverable }}次）
           </template>
         </div>
-        <div data-test="summary-hammer">
+        <div v-if="locked.has('hammer') || summary.hammer.length" data-test="summary-hammer">
           <template v-if="locked.has('hammer')"><span class="sum-icon">⚒</span>鐵鎚：無法強化</template>
           <div v-for="h in summary.hammer" v-else :key="h.id">
             <span class="sum-icon">⚒</span>{{ h.name }}：{{ h.used }}/{{ h.max }}

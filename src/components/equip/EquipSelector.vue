@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue'
-import { DEFAULT_FILTER, type useEquipData } from '@/composables/useEquipData'
-import type { JobGroup } from '@/utils/mst/enhance/types'
+import { bucketOf, DEFAULT_FILTER, NO_CATEGORY_ID, type useEquipData } from '@/composables/useEquipData'
+import type { IndexEntry, JobGroup } from '@/utils/mst/enhance/types'
 
 const props = defineProps<{ data: ReturnType<typeof useEquipData> }>()
 const emit = defineEmits<{ select: [id: number] }>()
@@ -21,11 +21,34 @@ const filter = reactive({ ...DEFAULT_FILTER })
 
 // --- search ---
 const query = ref('')
+/** Results list visibility: closed by Escape / blur, reopened by typing or focus. */
+const open = ref(true)
 const results = computed(() => (query.value.trim() ? props.data.search(query.value, filter) : []))
-function pickResult(id: number) {
+const showResults = computed(() => open.value && query.value.trim() !== '')
+let blurTimer: ReturnType<typeof setTimeout> | null = null
+function onSearchInput() {
+  open.value = true
+}
+function onSearchFocus() {
+  if (blurTimer) clearTimeout(blurTimer)
+  blurTimer = null
+  open.value = true
+}
+function onSearchBlur() {
+  // Delay so a click on a result (which fires after the input's blur) still lands.
+  blurTimer = setTimeout(() => {
+    open.value = false
+    blurTimer = null
+  }, 200)
+}
+function pickResult(e: IndexEntry) {
   query.value = ''
-  nameId.value = '' // the name dropdown no longer shows the current item
-  emit('select', id)
+  // Sync the cascade to the picked item (no second select: onName only runs on user change).
+  level.value = String(bucketOf(e.level))
+  category.value = e.searchCategory ?? NO_CATEGORY_ID
+  detail.value = e.searchCategory !== null && e.searchDetail !== null ? e.searchDetail : UNDETAILED
+  nameId.value = String(e.id) // reset by the nameOptions watcher when a filter hides it
+  emit('select', e.id)
 }
 
 // --- cascade: level bucket → category → detail → name ---
@@ -84,12 +107,13 @@ const jobValue = computed({
       <div class="row g-2 align-items-start">
         <div class="col-12 col-lg-4 search-col">
           <input v-model="query" class="form-control form-control-sm" type="search" placeholder="搜尋裝備名稱"
-            data-test="search" aria-label="搜尋裝備名稱" />
-          <ul v-if="results.length" class="list-group search-results">
+            data-test="search" aria-label="搜尋裝備名稱" autocomplete="off" @input="onSearchInput"
+            @focus="onSearchFocus" @blur="onSearchBlur" @keydown.esc="open = false" />
+          <ul v-if="showResults && results.length" class="list-group search-results">
             <li v-for="e in results" :key="e.id" class="list-group-item list-group-item-action" role="button"
-              data-test="search-result" @click="pickResult(e.id)">{{ data.displayName(e) }}</li>
+              data-test="search-result" @click="pickResult(e)">{{ data.displayName(e) }}</li>
           </ul>
-          <div v-else-if="query.trim()" class="search-results list-group">
+          <div v-else-if="showResults" class="search-results list-group">
             <span class="list-group-item text-muted">找不到符合的裝備</span>
           </div>
         </div>

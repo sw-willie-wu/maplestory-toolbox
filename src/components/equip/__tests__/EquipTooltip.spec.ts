@@ -145,6 +145,16 @@ describe('EquipTooltip', () => {
     expect(w.find('[data-test="summary-hammer"]').text()).toContain('5/5')
   })
 
+  it('shows a hammer row only when that hammer was used', () => {
+    const e = equip()
+    const s: EnhanceState = { ...emptyState(e), hammer: { platinum: 5 } }
+    const hammer = render({ e, s, b: computeBreakdown(e, s) }).find('[data-test="summary-hammer"]').text()
+    expect(hammer).toContain('白金鐵鎚')
+    expect(hammer).not.toContain('黃金鐵鎚')
+    const none = emptyState(e)
+    expect(render({ e, s: none, b: computeBreakdown(e, none) }).find('[data-test="summary-hammer"]').exists()).toBe(false)
+  })
+
   it('shows set name and count when setInfo given', () => {
     const info: SetInfo = { name: '永恆套裝', completeCount: 7, effects: {}, jokerPossible: true, zeroWeaponJokerPossible: false }
     const w = render({ setInfo: info })
