@@ -100,7 +100,6 @@ const view = computed(() => {
     breakdown,
     locked: lockedSet,
     summary: tooltipSummary(e, s, breakdown, lockedSet),
-    setInfo: data.setInfo(e.setId),
     specJob: data.jobName(e.specJob),
     // official category / detail names; slot name only for items outside the official categories
     tags: e.searchCategory === null
@@ -174,7 +173,7 @@ onBeforeUnmount(() => {
       data-test="tooltip-pin">
       <div class="eq-tip__scroll" :style="scrollStyle" data-test="tooltip-scroll">
         <EquipTooltip v-if="view" :equip="view.equip" :breakdown="view.breakdown" :state="view.state"
-          :summary="view.summary" :locked="view.locked" :set-info="view.setInfo" :spec-job="view.specJob"
+          :summary="view.summary" :locked="view.locked" :spec-job="view.specJob"
           :tags="view.tags" :compact="isCompact && !expanded" />
         <EquipTooltip v-else placeholder :compact="isCompact" />
       </div>

@@ -262,6 +262,18 @@ describe('useEquipData', () => {
       expect(ids(d.search(' maple '))).toEqual([1003000])
     })
 
+    it('treats variant characters as the same in both query and name', async () => {
+      const d = await loaded()
+      // folding is symmetric for every pair: either spelling in the query finds the same entries
+      const fold = (s: string) => ids(d.search(s))
+      for (const [a, b] of [['秘', '祕'], ['臺', '台'], ['艷', '豔'], ['盃', '杯'], ['周', '週']]) {
+        expect(fold(a)).toEqual(fold(b))
+      }
+      // 永恆 is not a folded pair: the fixture's 永恆 name is not found via 永恒
+      expect(fold('永恒盜賊')).toEqual([])
+      expect(fold('永恆盜賊')).toEqual([1005983])
+    })
+
     it('sorts exact name first, then level desc, then id; applies limit', async () => {
       const d = await loaded()
       expect(ids(d.search('帽'))).toEqual([1003001, 1002999, 1002000])
@@ -433,6 +445,15 @@ describe('smoke: real public data', () => {
       return { ok: false, status: 404, json: async () => ({}) } as Response
     }
   }) as typeof fetch
+
+  it('search folds variant characters (秘/祕, 臺/台, 艷/豔, 盃/杯, 周/週)', async () => {
+    const d = useEquipData(PUBLIC, diskFetch)
+    await d.load()
+    const viaCommon = ids(d.search('神秘'))
+    expect(viaCommon.length).toBeGreaterThan(0)
+    expect(viaCommon).toEqual(ids(d.search('神祕')))
+    expect(d.search('神秘').every((e) => e.name.includes('神祕'))).toBe(true)
+  })
 
   it('searches, loads and walks the cascade on real data within the tool scope', async () => {
     const d = useEquipData(PUBLIC, diskFetch)

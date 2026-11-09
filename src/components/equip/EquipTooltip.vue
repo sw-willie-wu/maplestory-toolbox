@@ -2,7 +2,7 @@
 import { computed } from 'vue'
 import ItemIcon from './ItemIcon.vue'
 import type { EnhanceState, EnhanceTab, EquipBreakdown } from '@/utils/mst/enhance/equip'
-import type { EquipData, JobGroup, SetInfo, StatKey, Stats } from '@/utils/mst/enhance/types'
+import type { EquipData, JobGroup, StatKey, Stats } from '@/utils/mst/enhance/types'
 import type { TooltipSummary } from './summary'
 
 const props = withDefaults(
@@ -13,7 +13,6 @@ const props = withDefaults(
     state?: EnhanceState | null
     summary?: TooltipSummary | null
     locked?: ReadonlySet<EnhanceTab>
-    setInfo?: SetInfo | null
     /** useEquipData().jobName(equip.specJob) */
     specJob?: { name: string; guess: boolean } | null
     /** Category labels shown next to the icon: [大分類, 細分類] (e.g. 飾品 / 戒指). */
@@ -28,7 +27,6 @@ const props = withDefaults(
     state: null,
     summary: null,
     locked: () => new Set<EnhanceTab>(),
-    setInfo: null,
     specJob: null,
     tags: () => [],
     compact: false,
@@ -201,7 +199,6 @@ const potentials = computed(() => {
                 }}</span></template>)</template></span></div>
       </div>
       <div v-if="d.breakdown.starforceUnsourced" class="note">※ 此星數的攻擊力星力加成無資料，數值可能偏低</div>
-      <div v-if="setInfo" class="set" data-test="set">套裝：{{ setInfo.name }}（{{ setInfo.completeCount }}件）</div>
 
       <div class="dash"></div>
       <div class="status">
@@ -429,11 +426,6 @@ const potentials = computed(() => {
   font-size: 11px;
 }
 
-.set {
-  margin-top: 4px;
-  font-size: 12px;
-  color: var(--tt-fl);
-}
 
 .status {
   font-size: 12px;

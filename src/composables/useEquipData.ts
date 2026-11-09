@@ -40,6 +40,18 @@ export interface DataMeta {
 export const NO_CATEGORY_ID = '__none'
 const NO_CATEGORY: SearchCategory = Object.freeze({ id: NO_CATEGORY_ID, name: '其他', details: [] })
 
+/**
+ * Variant characters that users type interchangeably but WZ names spell one way (e.g. 神祕 in data, 神秘 typed).
+ * Both query and name are folded to the right-hand form before matching.
+ */
+const SEARCH_FOLD: Readonly<Record<string, string>> = { 秘: '祕', 臺: '台', 艷: '豔', 盃: '杯', 周: '週' }
+const SEARCH_FOLD_RE = new RegExp(`[${Object.keys(SEARCH_FOLD).join('')}]`, 'g')
+
+/** Lower-cases Latin and folds variant CJK characters for name search. */
+export function foldSearchText(s: string): string {
+  return s.toLowerCase().replace(SEARCH_FOLD_RE, (c) => SEARCH_FOLD[c])
+}
+
 /** Level bucket (dropdown value) of an item level: Lv.100–109 → 100. */
 export const bucketOf = (level: number) => Math.floor(level / 10) * 10
 
@@ -203,11 +215,11 @@ export function useEquipData(baseUrl = '/data/tms-v283', fetchImpl: typeof fetch
    * exact name first, then level desc, then id.
    */
   function search(q: string, limit = 50): IndexEntry[] {
-    const needle = q.trim().toLowerCase()
+    const needle = foldSearchText(q.trim())
     if (!needle) return []
-    const exact = (e: IndexEntry) => (e.name.toLowerCase() === needle ? 0 : 1)
+    const exact = (e: IndexEntry) => (foldSearchText(e.name) === needle ? 0 : 1)
     return state.value.tool
-      .filter((e) => e.name.toLowerCase().includes(needle))
+      .filter((e) => foldSearchText(e.name).includes(needle))
       .sort((a, b) => exact(a) - exact(b) || b.level - a.level || a.id - b.id)
       .slice(0, limit)
   }

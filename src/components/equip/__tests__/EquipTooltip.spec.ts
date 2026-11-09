@@ -5,7 +5,7 @@ import ItemIcon from '../ItemIcon.vue'
 import { tooltipSummary } from '../summary'
 import { computeBreakdown, emptyState, lockedTabs, type EquipBreakdown, type EnhanceState } from '@/utils/mst/enhance/equip'
 import { STARFORCE } from '@/utils/mst/enhance/rules/starforce'
-import type { EquipData, SetInfo } from '@/utils/mst/enhance/types'
+import type { EquipData } from '@/utils/mst/enhance/types'
 
 function equip(p: Partial<EquipData> = {}): EquipData {
   return {
@@ -60,7 +60,6 @@ function render(opts: {
   e?: EquipData
   b?: EquipBreakdown
   s?: EnhanceState
-  setInfo?: SetInfo | null
   specJob?: { name: string; guess: boolean } | null
   compact?: boolean
   tags?: string[]
@@ -76,7 +75,6 @@ function render(opts: {
       state: s,
       summary: tooltipSummary(e, s, b, locked),
       locked,
-      setInfo: opts.setInfo ?? null,
       specJob: opts.specJob ?? null,
       compact: opts.compact ?? false,
       tags: opts.tags ?? []
@@ -158,12 +156,10 @@ describe('EquipTooltip', () => {
     expect(render({ e, s: none, b: computeBreakdown(e, none) }).find('[data-test="summary-hammer"]').exists()).toBe(false)
   })
 
-  it('shows set name and count when setInfo given', () => {
-    const info: SetInfo = { name: '永恆套裝', completeCount: 7, effects: {}, jokerPossible: true, zeroWeaponJokerPossible: false }
-    const w = render({ setInfo: info })
-    expect(w.find('[data-test="set"]').text()).toContain('永恆套裝')
-    expect(w.find('[data-test="set"]').text()).toContain('7')
-    expect(render().find('[data-test="set"]').exists()).toBe(false)
+  it('does not show a set line (user decision 2026-11-09)', () => {
+    const w = render({ e: { ...equip(), setId: 889 } })
+    expect(w.find('[data-test="set"]').exists()).toBe(false)
+    expect(w.text()).not.toContain('套裝')
   })
 
   it('shows the special job restriction, marking guesses', () => {
