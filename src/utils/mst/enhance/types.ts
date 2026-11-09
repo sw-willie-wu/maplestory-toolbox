@@ -37,11 +37,57 @@ export interface IndexEntry {
    * '' when identical to the canonical except id (collapse in the UI). See tools/wz-export/README.md.
    */
   variantLabel: string
+  /** Official item category id (SearchCategory.id, categories.json); null when none applies. Same value as EquipData. */
+  searchCategory: string | null
+  /** Official detail category id within searchCategory (SearchDetail.id); null when no WZ id range contains the item. */
+  searchDetail: string | null
+  /** Special-job restriction: WZ info/reqSpecJob, else info/reqJob2; null when neither exists (names: jobs.json). */
+  specJob: number | null
+}
+
+/** Item/ThothSearchOption.img ItemDetailCategory entry. */
+export interface SearchDetail {
+  id: string // WZ key, e.g. "Cap", "Bracelet" (unique only within its category)
+  name: string
+  begin: number
+  end: number
+  /** All inclusive id ranges ([begin, end] first, then WZ begin2/end2 ...). */
+  ranges: [number, number][]
+}
+
+/** categories.json entry: Item/ThothSearchOption.img ItemCategory paired with its ItemDetailCategory. */
+export interface SearchCategory {
+  id: string // ItemCategory WZ key, e.g. "Armor", "OneHandSword"
+  name: string
+  details: SearchDetail[]
+}
+
+/** jobs.json */
+export interface JobsData {
+  groups: { id: JobGroup; bit: number; name: string; confirmed: boolean }[]
+  /** Every specJob value present in the exported data. name null = not confirmable from v283 String data. */
+  specJobs: { id: number; name: string | null; nameEn: string | null; confirmed: boolean; legacyName: string | null; count: number }[]
+}
+
+/** One set-bonus tier of Etc/SetItemInfo.img/<set>/Effect/<pieces> (display only). */
+export interface SetEffect {
+  /** Scalar WZ keys as-is (incSTR, incPAD, incAllStat, incMHPr, nbdR, ...). */
+  stats: Record<string, number>
+  /** Effect/<n>/Option/<k>: potential option id + level. */
+  options?: { id: number; level: number }[]
+  /** Effect/<n>/activeSkill/<k>: skill id + level. */
+  activeSkills?: { id: number; level: number }[]
+  /** Any other nested WZ node (OptionToMob, bonusByTime), raw. */
+  other?: Record<string, unknown>
 }
 
 export interface SetInfo {
   name: string
   completeCount: number
+  /** Keyed by piece count ("2", "3", ...). */
+  effects: Record<string, SetEffect>
+  jokerPossible: boolean
+  zeroWeaponJokerPossible: boolean
 }
 
 export type Stats = Partial<Record<StatKey, number>>
@@ -75,6 +121,9 @@ export interface EquipData {
   fixedPotential: boolean // WZ info/fixedPotential
   eventVariant: boolean // WZ info/exceptTransmission || info/undecomposable
   accountShare: boolean // WZ info/accountSharable || info/sharableOnce
+  searchCategory: string | null // see IndexEntry
+  searchDetail: string | null // see IndexEntry
+  specJob: number | null // see IndexEntry
 }
 
 export interface Sourced {

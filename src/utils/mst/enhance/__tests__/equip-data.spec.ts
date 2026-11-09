@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { readdirSync } from 'node:fs'
-import type { EquipData } from '../types'
+import type { EquipData, JobsData, SearchCategory, SetInfo } from '../types'
 import fixture from './fixtures/nexon-items.json'
 import { DATA_DIR, anyWithPrefix, loadEquipSync, loadIndexSync, readDataJson } from './helpers'
 
@@ -114,10 +114,106 @@ describe('exported TMS v283 equipment data', () => {
     for (const [key, n] of canon) expect(n, key).toBe(1)
   })
 
-  it('cash and non-cash entries never compete for canonical (紅鷹鋼盔: non-cash 1000054, cash 1000009)', () => {
+  it('cash items are not exported (紅鷹鋼盔: non-cash 1000054 canonical, cash 1000009 absent)', () => {
     const byId = new Map(loadIndexSync().map((e) => [e.id, e]))
     expect(byId.get(1000054)).toMatchObject({ name: '紅鷹鋼盔', cash: false, canonical: true, variantLabel: '' })
-    expect(byId.get(1000009)).toMatchObject({ name: '紅鷹鋼盔', cash: true, canonical: true, variantLabel: '' })
+    expect(byId.has(1000009)).toBe(false)
+    expect(allEquips().some((e) => e.id === 1000009)).toBe(false)
+  })
+
+  it('no cash item anywhere in public/data (index.json and every equip/<category>.json)', () => {
+    expect(loadIndexSync().filter((e) => e.cash).map((e) => e.id)).toEqual([])
+    expect(allEquips().filter((e) => e.cash).map((e) => e.id)).toEqual([])
+    expect(allEquips().length).toBeGreaterThan(10000)
+  })
+
+  it('categories.json: official ThothSearchOption categories with detail id ranges', () => {
+    const cats = readDataJson<SearchCategory[]>('categories.json')
+    expect(cats.length).toBeGreaterThan(0)
+    expect(cats.map((c) => c.id)).toEqual(expect.arrayContaining(['Armor', 'Accessory', 'SubWeapon']))
+    for (const c of cats) {
+      expect(c.name, c.id).toMatch(/\S/)
+      expect(c.details.length, c.id).toBeGreaterThan(0)
+      for (const d of c.details) {
+        expect(d.ranges[0], `${c.id}/${d.id}`).toEqual([d.begin, d.end])
+        for (const [b, e] of d.ranges) expect(b, `${c.id}/${d.id}`).toBeLessThanOrEqual(e)
+      }
+    }
+    const armor = cats.find((c) => c.id === 'Armor')!
+    expect(armor.details.find((d) => d.id === 'Cap')).toMatchObject({ name: '帽子', begin: 1000000, end: 1009999 })
+  })
+
+  it('searchCategory / searchDetail: every non-cash weapon has a category; details contain the id', () => {
+    const cats = new Map(readDataJson<SearchCategory[]>('categories.json').map((c) => [c.id, c]))
+    for (const e of allEquips()) {
+      if (e.searchCategory !== null) expect(cats.has(e.searchCategory), `${e.id}`).toBe(true)
+      if (e.isWeapon) expect(e.searchCategory, `${e.id}`).not.toBeNull()
+      if (e.searchDetail !== null) {
+        const d = cats.get(e.searchCategory!)!.details.find((x) => x.id === e.searchDetail)
+        expect(d, `${e.id}`).toBeDefined()
+        // Derived Accessory/Emblem (emblems past the WZ Emblem range) is the only detail allowed outside its ranges.
+        const derivedEmblem = e.searchDetail === 'Emblem' && e.id >= 1190000 && e.id <= 1191999
+        if (!derivedEmblem) expect(d!.ranges.some(([b, end]) => e.id >= b && e.id <= end), `${e.id}`).toBe(true)
+      }
+    }
+    expect(loadEquipSync(1005983)).toMatchObject({ searchCategory: 'Armor', searchDetail: 'Cap' })
+    expect(loadEquipSync(1262002)).toMatchObject({ searchCategory: 'OneHandSword', searchDetail: 'Bracelet' })
+    // 1352910–1352919 are 鷹眼 (Captain sights): ThothSearchOption gives CaptainSight and AranPendulum the same range.
+    expect(loadEquipSync(1352910)).toMatchObject({ searchCategory: 'SubWeapon', searchDetail: 'CaptainSight' })
+  })
+
+  it('weapons outside ThothSearchOption ranges: category from id prefix, not islot (detail null)', () => {
+    const cases: [number, string][] = [
+      [1542000, 'TwoHandSword'], // 鐵刀 (islot Wp)
+      [1552000, 'TwoHandSword'], // 鐵扇 (islot Wp)
+      [1403000, 'TwoHandSword'], // 老舊武拳 (islot Wp)
+      [1252001, 'OneHandSword'], // 露西奧萊記憶長杖
+      [1720000, 'SubWeapon'], // 阿斯特拉獎牌
+    ]
+    for (const [id, cat] of cases) expect(loadEquipSync(id), `${id}`).toMatchObject({ searchCategory: cat, searchDetail: null })
+    for (const e of allEquips()) {
+      if (e.category !== 'Weapon' || e.searchDetail !== null) continue
+      const p = Math.floor(e.id / 10000)
+      if (p >= 140 && p <= 159) expect(e.searchCategory, `${e.id}`).toBe('TwoHandSword')
+      if (p >= 121 && p <= 139 && p !== 135) expect(e.searchCategory, `${e.id}`).toBe('OneHandSword')
+      if (p === 135 || p === 172) expect(e.searchCategory, `${e.id}`).toBe('SubWeapon')
+    }
+  })
+
+  it('emblems beyond the WZ Emblem range (1190300+, 1191xxx) are Accessory / Emblem', () => {
+    expect(loadEquipSync(1190301)).toMatchObject({ searchCategory: 'Accessory', searchDetail: 'Emblem' }) // 黃金楓葉徽章
+    expect(loadEquipSync(1191000)).toMatchObject({ searchCategory: 'Accessory', searchDetail: 'Emblem' }) // 銀凱內西斯徽章
+  })
+
+  it('specJob: Kinesis weapons are 142; every specJob value is listed in jobs.json', () => {
+    expect(loadEquipSync(1262002).specJob).toBe(142) // 初始ESP限制器
+    expect(loadEquipSync(1005983).specJob).toBeNull()
+    const jobs = readDataJson<JobsData>('jobs.json')
+    const byId = new Map(jobs.specJobs.map((j) => [j.id, j]))
+    expect(byId.get(142)).toMatchObject({ name: '凱內西斯', nameEn: 'Kinesis', confirmed: true })
+    const present = new Set(allEquips().map((e) => e.specJob).filter((v): v is number => v !== null))
+    expect([...present].sort((a, b) => a - b)).toEqual(jobs.specJobs.map((j) => j.id))
+    for (const j of jobs.specJobs) {
+      expect(j.count, `${j.id}`).toBeGreaterThan(0)
+      if (!j.confirmed) expect(j.name, `${j.id}`).toBeNull()
+    }
+    expect(jobs.groups.map((g) => g.id)).toEqual(['warrior', 'magician', 'bowman', 'thief', 'pirate'])
+  })
+
+  it('index entries carry searchCategory / searchDetail / specJob equal to EquipData', () => {
+    for (const e of loadIndexSync()) {
+      const d = loadEquipSync(e.id)
+      expect([e.searchCategory, e.searchDetail, e.specJob], `${e.id}`).toEqual([d.searchCategory, d.searchDetail, d.specJob])
+    }
+  })
+
+  it('sets.json: set 247 (露塔必思套裝(劍士), incl. 高貴的戰士頭盔 1003797) has per-piece effects', () => {
+    expect(loadEquipSync(1003797).setId).toBe(247)
+    const s = readDataJson<Record<string, SetInfo>>('sets.json')['247']
+    expect(s).toMatchObject({ completeCount: 4, jokerPossible: true, zeroWeaponJokerPossible: true })
+    expect(s.effects['2'].stats).toMatchObject({ incSTR: 20, incDEX: 20, incMHP: 1000, incMMP: 1000 })
+    expect(s.effects['3'].stats).toMatchObject({ incPAD: 50, incMHPr: 10, incMMPr: 10 })
+    expect(s.effects['4'].options).toEqual([{ id: 30602, level: 15 }])
   })
 
   it('fallback labels for flag-less duplicates: first differing field tuc → level → base → #id; identical → empty', () => {

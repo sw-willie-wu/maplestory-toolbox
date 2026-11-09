@@ -3,6 +3,7 @@
 //   dotnet run -- --client "<MapleStory dir>" --probe 1005983,1472290      print info nodes of items
 //   dotnet run -- --client "<MapleStory dir>" --flags exceptUpgrade,Etuc    sample items carrying info keys
 //   dotnet run -- --client "<MapleStory dir>" --table islot,tuc,cash         TSV of info keys for every equip
+//   dotnet run -- --client "<MapleStory dir>" --node "Item\ThothSearchOption.img"  dump any WZ node
 //   dotnet run -- --client "<MapleStory dir>" --out ../../public/data/tms-v283
 using System.Globalization;
 using System.Text.Encodings.Web;
@@ -32,6 +33,14 @@ if (opts.TryGetValue("probe", out var probe))
         Console.WriteLine($"== {id} {names.GetValueOrDefault(id)} at {hit.Img.FullPath}");
         WithInfo(hit.Img, info => { foreach (var n in info.Nodes) Dump(n, "  "); });
     }
+    return;
+}
+
+if (opts.TryGetValue("node", out var nodePath))
+{
+    // Dump any WZ node, e.g. "Item\ThothSearchOption.img" or "Etc\SetItemInfo.img\247" (images are extracted on the way).
+    var n = FindExtracted(root, nodePath);
+    if (n == null) Console.WriteLine($"{nodePath}: NOT FOUND"); else foreach (var c in n.Nodes) Dump(c, "");
     return;
 }
 
@@ -86,6 +95,7 @@ return;
 static void Export(Wz_Node root, Wz_Node character, string outDir)
 {
     var names = LoadEquipNames(root);
+    var (categoriesJson, detailRanges) = LoadSearchCategories(root);
     var equipDir = Path.Combine(outDir, "equip");
     if (Directory.Exists(equipDir)) Directory.Delete(equipDir, true);
     Directory.CreateDirectory(equipDir);
@@ -97,6 +107,10 @@ static void Export(Wz_Node root, Wz_Node character, string outDir)
     var magicMismatch = new List<string>();
     var unnamed = 0;
     var excluded = new SortedDictionary<string, int>(StringComparer.Ordinal);
+    var cashExcluded = 0;
+    var searchStats = new SortedDictionary<string, int>(StringComparer.Ordinal); // range / islot-fallback / none
+    var unmatchedByPrefix = new SortedDictionary<string, int>(StringComparer.Ordinal);
+    var specJobCounts = new SortedDictionary<int, int>();
     var variants = new Dictionary<int, Variant>();
     var seenIds = new HashSet<int>();
     var hasPrefix1552 = EnumerateEquipImgs(character).Any(e => e.Category == "Weapon" && e.Id / 1000 == 1552);
@@ -149,6 +163,9 @@ static void Export(Wz_Node root, Wz_Node character, string outDir)
             var tradeBlock = Int(info, "tradeBlock") == 1 || Int(info, "equipTradeBlock") == 1;
             var superior = Int(info, "superiorEqp") == 1;
             var blockGoldHammer = Int(info, "blockGoldHammer") == 1;
+            // Special-job restriction (user reference pipeline): reqSpecJob, else reqJob2 (v283: never both on one item).
+            int? specJob = HasLoose(info, "reqSpecJob") ? IntLoose(info, "reqSpecJob") : HasLoose(info, "reqJob2") ? IntLoose(info, "reqJob2") : null;
+            var (searchCategory, searchDetail, searchHow) = SearchCategoryOf(id, cat, slot, detailRanges);
 
             var baseStats = new JsonObject();
             foreach (var (wzKey, statKey) in StatMap)
@@ -167,12 +184,18 @@ static void Export(Wz_Node root, Wz_Node character, string outDir)
                 ["superior"] = superior, ["blockGoldHammer"] = blockGoldHammer, ["exceptionalMax"] = exceptionalMax,
                 ["flameBoss"] = flameBoss, ["timeLimited"] = timeLimited, ["fixedPotential"] = fixedPotential,
                 ["eventVariant"] = eventVariant, ["accountShare"] = accountShare,
+                ["searchCategory"] = searchCategory, ["searchDetail"] = searchDetail, ["specJob"] = specJob,
             };
             if (!seenIds.Add(id)) { Console.Error.WriteLine($"WARN duplicate id {id} in {cat}, keeping first"); return; }
             // Test / placeholder equipment is not exported at all (neither equip/ nor index.json); see ExcludeRule.
             // GM-stat items (STR/DEX/INT/LUK all ≥ 999, e.g. 維澤特帽 1002140/1003142) are excluded as well.
             var gmStats = new[] { "str", "dex", "int", "luk" }.All(k => (baseStats[k]?.GetValue<int>() ?? 0) >= 999);
             if ((gmStats ? "gm-stats" : ExcludeRule(id, name)) is { } rule) { excluded[rule] = excluded.GetValueOrDefault(rule) + 1; return; }
+            // Cash items (WZ cash = 1) are not exported at all (user decision, Task 1c).
+            if (cash) { cashExcluded++; return; }
+            searchStats[searchHow] = searchStats.GetValueOrDefault(searchHow) + 1;
+            if (searchDetail == null) { var k = $"{cat}:{id / 1000}"; unmatchedByPrefix[k] = unmatchedByPrefix.GetValueOrDefault(k) + 1; }
+            if (specJob is { } sj) specJobCounts[sj] = specJobCounts.GetValueOrDefault(sj) + 1;
             if (!byCategory.TryGetValue(cat, out var map)) byCategory[cat] = map = new();
             map[id] = equip;
             // Unnamed items stay in equip/<category>.json but are not searchable via index.json.
@@ -181,6 +204,7 @@ static void Export(Wz_Node root, Wz_Node character, string outDir)
             {
                 ["id"] = id, ["name"] = name, ["category"] = cat, ["slot"] = slot, ["level"] = level,
                 ["cash"] = cash, ["tuc"] = tuc, ["setId"] = setId, ["jobs"] = JobsOf(reqJob),
+                ["searchCategory"] = searchCategory, ["searchDetail"] = searchDetail, ["specJob"] = specJob,
             });
             variants[id] = new Variant(slot, name, cash, eventVariant, timeLimited, fixedPotential, untradeable);
         });
@@ -206,6 +230,8 @@ static void Export(Wz_Node root, Wz_Node character, string outDir)
     });
 
     WriteJson(Path.Combine(outDir, "sets.json"), ExportSets(root));
+    WriteJson(Path.Combine(outDir, "categories.json"), categoriesJson);
+    WriteJson(Path.Combine(outDir, "jobs.json"), ExportJobs(root, specJobCounts));
 
     var slotNames = new JsonObject();
     foreach (var code in slotCodes)
@@ -224,6 +250,10 @@ static void Export(Wz_Node root, Wz_Node character, string outDir)
     Console.WriteLine("Per category: " + string.Join(", ", byCategory.Select(kv => $"{kv.Key}={kv.Value.Count}")));
     Console.WriteLine($"Items without a String name (kept in equip/, excluded from index.json): {unnamed}");
     Console.WriteLine($"Excluded test/placeholder items ({excluded.Values.Sum()}): " + string.Join(", ", excluded.Select(kv => $"{kv.Key}={kv.Value}")));
+    Console.WriteLine($"Excluded cash items (after the test/placeholder rules): {cashExcluded}");
+    Console.WriteLine("Search category: " + string.Join(", ", searchStats.Select(kv => $"{kv.Key}={kv.Value}")));
+    Console.WriteLine("  no detail range, by category:id/1000: " + string.Join(", ", unmatchedByPrefix.Select(kv => $"{kv.Key}={kv.Value}")));
+    Console.WriteLine("specJob: " + string.Join(", ", specJobCounts.Select(kv => $"{kv.Key}={kv.Value}")) + $" (total {specJobCounts.Values.Sum()})");
     Console.WriteLine($"Magic prefixes: {string.Join(",", magicPrefixes.Order())} (1552 present: {hasPrefix1552})");
     Console.WriteLine($"Variants: {index.Count(e => e["canonical"]!.GetValue<bool>())} canonical, " +
         $"{index.Count(e => e["variantLabel"]!.GetValue<string>() != "")} labelled, " +
@@ -344,14 +374,193 @@ static JsonObject ExportSets(Wz_Node root)
     foreach (var s in image.Node.Nodes.OrderBy(n => int.TryParse(n.Text, out var v) ? v : int.MaxValue))
     {
         if (!int.TryParse(s.Text, out var setId)) continue;
+        // Effect/<pieces>: scalar keys → stats (raw WZ names); Option/<k> {option, level} → options; activeSkill/<k>
+        // {id, level} → activeSkills; any other nested node (OptionToMob, bonusByTime) → other (raw). Display only.
+        var effects = new JsonObject();
+        if (s.Nodes["Effect"] is { } effectNode)
+            foreach (var tier in effectNode.Nodes.OrderBy(n => int.TryParse(n.Text, out var v) ? v : int.MaxValue))
+            {
+                var stats = new JsonObject();
+                var options = new JsonArray();
+                var skills = new JsonArray();
+                var other = new JsonObject();
+                foreach (var k in tier.Nodes)
+                {
+                    if (k.Nodes.Count == 0) { stats[k.Text] = RawScalar(k); continue; }
+                    switch (k.Text)
+                    {
+                        case "Option":
+                            foreach (var o in OrderedChildren(k)) options.Add(new JsonObject { ["id"] = Int(o, "option"), ["level"] = Int(o, "level") });
+                            break;
+                        case "activeSkill":
+                            foreach (var o in OrderedChildren(k)) skills.Add(new JsonObject { ["id"] = Int(o, "id"), ["level"] = Int(o, "level") });
+                            break;
+                        default: other[k.Text] = RawNode(k); break;
+                    }
+                }
+                var e = new JsonObject { ["stats"] = stats };
+                if (options.Count > 0) e["options"] = options;
+                if (skills.Count > 0) e["activeSkills"] = skills;
+                if (other.Count > 0) e["other"] = other;
+                effects[tier.Text] = e;
+            }
         sets[setId.ToString(CultureInfo.InvariantCulture)] = new JsonObject
         {
             ["name"] = Str(s, "setItemName") ?? "",
             ["completeCount"] = Int(s, "completeCount"),
+            ["effects"] = effects,
+            ["jokerPossible"] = Int(s, "jokerPossible") == 1,
+            ["zeroWeaponJokerPossible"] = Int(s, "zeroWeaponJokerPossible") == 1,
         };
     }
     image.Unextract();
     return sets;
+}
+
+static IEnumerable<Wz_Node> OrderedChildren(Wz_Node n) => n.Nodes.OrderBy(c => int.TryParse(c.Text, out var v) ? v : int.MaxValue);
+
+// Scalar WZ value → JSON number when integral, else string.
+static JsonNode? RawScalar(Wz_Node n)
+{
+    var raw = n.Value?.ToString() ?? "";
+    return int.TryParse(raw, NumberStyles.Integer, CultureInfo.InvariantCulture, out var iv) ? iv : raw;
+}
+
+static JsonNode? RawNode(Wz_Node n)
+{
+    if (n.Nodes.Count == 0) return RawScalar(n);
+    var o = new JsonObject();
+    foreach (var c in n.Nodes) o[c.Text] = RawNode(c);
+    return o;
+}
+
+// Item/ThothSearchOption.img (official in-game item search filter). ItemCategory/<key>/string is paired with
+// ItemDetailCategory/<key> by key, else by position (v283: OneHandSword↔OneHandWeapon, TwoHandSword↔TwoHandWeapon).
+// Detail entries with begin = end = 0 ("default" = 所有) are UI-only and skipped. begin2/end2 (… beginN/endN) add ranges.
+static (JsonArray Json, List<DetailRange> Ranges) LoadSearchCategories(Wz_Node root)
+{
+    var node = root.FindNodeByPath(@"Item\ThothSearchOption.img") ?? throw new InvalidOperationException("Item/ThothSearchOption.img missing");
+    var image = node.GetValue<Wz_Image>() ?? throw new InvalidOperationException("ThothSearchOption.img not an image");
+    if (!image.TryExtract(out var ex)) throw new InvalidOperationException("ThothSearchOption.img extract failed", ex);
+    try
+    {
+        var cats = image.Node.Nodes["ItemCategory"]?.Nodes.ToList() ?? throw new InvalidOperationException("ItemCategory missing");
+        var details = image.Node.Nodes["ItemDetailCategory"]?.Nodes.ToList() ?? throw new InvalidOperationException("ItemDetailCategory missing");
+        if (cats.Count != details.Count) throw new InvalidOperationException($"ItemCategory ({cats.Count}) / ItemDetailCategory ({details.Count}) count differs");
+        var json = new JsonArray();
+        var ranges = new List<DetailRange>();
+        var paired = new HashSet<string>(StringComparer.Ordinal);
+        for (var i = 0; i < cats.Count; i++)
+        {
+            var c = cats[i];
+            var d = details.FirstOrDefault(x => x.Text == c.Text) ?? details[i];
+            // Position fallback must not reuse a detail that another category pairs with by name (or already took).
+            if (!paired.Add(d.Text) || (d.Text != c.Text && cats.Any(x => x.Text == d.Text)))
+                throw new InvalidOperationException($"ItemDetailCategory '{d.Text}' paired more than once (category '{c.Text}')");
+            if (d.Text != c.Text) Console.WriteLine($"Search category '{c.Text}' paired by position with ItemDetailCategory '{d.Text}'");
+            var detailJson = new JsonArray();
+            foreach (var det in d.Nodes)
+            {
+                var rs = new List<(int, int)>();
+                for (var k = 1; ; k++)
+                {
+                    var suffix = k == 1 ? "" : k.ToString(CultureInfo.InvariantCulture);
+                    if (det.Nodes["begin" + suffix] == null) break;
+                    rs.Add((Int(det, "begin" + suffix), Int(det, "end" + suffix)));
+                }
+                if (rs.Count == 0 || rs.All(r => r == (0, 0))) continue;
+                var rangesJson = new JsonArray();
+                foreach (var (b, e) in rs) rangesJson.Add(new JsonArray(b, e));
+                detailJson.Add(new JsonObject
+                {
+                    ["id"] = det.Text, ["name"] = Str(det, "string") ?? det.Text,
+                    ["begin"] = rs[0].Item1, ["end"] = rs[0].Item2, ["ranges"] = rangesJson,
+                });
+                ranges.Add(new DetailRange(c.Text, det.Text, rs));
+            }
+            json.Add(new JsonObject { ["id"] = c.Text, ["name"] = Str(c, "string") ?? c.Text, ["details"] = detailJson });
+        }
+        var unpaired = details.Where(x => !paired.Contains(x.Text)).Select(x => x.Text).ToList();
+        if (unpaired.Count > 0) throw new InvalidOperationException($"ItemDetailCategory not paired: {string.Join(", ", unpaired)}");
+        return (json, ranges);
+    }
+    finally { image.Unextract(); }
+}
+
+// The detail whose range contains the id; overlaps → narrowest range, ties → first in WZ order (v283: CaptainSight and
+// AranPendulum both list 1352910–1352919, which are 鷹眼 Captain sights). ThothSearchOption predates many weapon types
+// (1252, 1254, 1403, 1542, 1552, 172x 阿斯特拉 …), so items in the Weapon folder without a range get a category from the
+// id prefix p = id / 10000, following how ThothSearchOption itself splits by prefix (islot is unreliable: many two-handed
+// weapons are Wp): 121–139 except 135 → OneHandSword, 140–159 → TwoHandSword, 135 / 172 → SubWeapon (detail null).
+// Remaining Weapon-folder items (1690 「xx等防具」 placeholders, 1702176) keep the islot map (pending user decision).
+// Accessory-folder emblems (islot Si, 1190000–1191999) beyond the WZ Emblem range → Accessory / Emblem (derived).
+static (string? Category, string? Detail, string How) SearchCategoryOf(int id, string cat, string slot, List<DetailRange> ranges)
+{
+    DetailRange? best = null;
+    var bestWidth = long.MaxValue;
+    foreach (var r in ranges)
+        foreach (var (b, e) in r.Ranges)
+            if (id >= b && id <= e && (long)e - b < bestWidth) { best = r; bestWidth = (long)e - b; }
+    if (best != null) return (best.Category, best.Detail, "range");
+    if (cat == "Weapon")
+    {
+        var p = id / 10000;
+        if (p is >= 121 and <= 139 && p != 135) return ("OneHandSword", null, "prefix-fallback");
+        if (p is >= 140 and <= 159) return ("TwoHandSword", null, "prefix-fallback");
+        if (p is 135 or 172) return ("SubWeapon", null, "prefix-fallback");
+        if (WeaponFolderIslotCategory.TryGetValue(slot, out var c)) return (c, null, "islot-fallback");
+    }
+    if (cat == "Accessory" && slot == "Si" && id is >= 1190000 and <= 1191999) return ("Accessory", "Emblem", "emblem-fallback");
+    return (null, null, "none");
+}
+
+// jobs.json: job groups (reqJob bits) and every specJob id present in the export. Names are confirmed against v283
+// String/Skill.img bookName: group bit b ↔ skill book (100 · position) "X入門"; specJob n ↔ job codes n·100 … n·100+99.
+// A legacy-table name (user's older notebook) is used only when some bookName contains it; an id missing from the legacy
+// table takes the bookName when all its books agree. Anything else → name null (legacyName kept for reference).
+static JsonObject ExportJobs(Wz_Node root, SortedDictionary<int, int> specJobCounts)
+{
+    var books = new Dictionary<int, string>();
+    var node = root.FindNodeByPath(@"String\Skill.img");
+    var image = node?.GetValue<Wz_Image>();
+    if (image != null && image.TryExtract())
+    {
+        foreach (var c in image.Node.Nodes)
+            if (int.TryParse(c.Text, NumberStyles.None, CultureInfo.InvariantCulture, out var code) && Str(c, "bookName") is { Length: > 0 } bn)
+                books[code] = bn;
+        image.Unextract();
+    }
+    else Console.Error.WriteLine("WARN String/Skill.img unavailable; job names unconfirmed");
+
+    var groups = new JsonArray();
+    var pos = 1;
+    foreach (var (bit, id, name) in JobGroupNames)
+    {
+        var ok = books.TryGetValue(pos++ * 100, out var bn) && bn.StartsWith(name, StringComparison.Ordinal);
+        if (!ok) Console.Error.WriteLine($"WARN job group {id} name '{name}' not confirmed by String/Skill.img");
+        groups.Add(new JsonObject { ["id"] = id, ["bit"] = bit, ["name"] = name, ["confirmed"] = ok });
+    }
+
+    var specs = new JsonArray();
+    foreach (var (sj, count) in specJobCounts)
+    {
+        // Codes are 4+ digits (n·100 + 0..99); 3-digit codes (100, 110, …) are explorer jobs, not special jobs.
+        var bookNames = books.Where(kv => kv.Key >= 1000 && kv.Key / 100 == sj).Select(kv => kv.Value).Distinct().ToList();
+        var hasLegacy = LegacySpecJobs.TryGetValue(sj, out var legacy);
+        string? name = null, nameEn = null;
+        if (hasLegacy && bookNames.Any(b => b.Contains(legacy.Name, StringComparison.Ordinal))) (name, nameEn) = (legacy.Name, legacy.NameEn);
+        else if (!hasLegacy && bookNames.Count == 1) name = bookNames[0];
+        var why = !hasLegacy ? "missing from legacy table" : name == null ? "legacy name not confirmed" : null;
+        if (why != null) Console.WriteLine($"specJob {sj} ({count} items): {why}; String/Skill.img books: [{string.Join(", ", bookNames)}] → name {name ?? "null"}");
+        specs.Add(new JsonObject
+        {
+            ["id"] = sj, ["name"] = name, ["nameEn"] = nameEn, ["confirmed"] = name != null,
+            ["legacyName"] = hasLegacy ? legacy.Name : null, ["count"] = count,
+        });
+    }
+    foreach (var id in LegacySpecJobs.Keys.Where(k => !specJobCounts.ContainsKey(k)))
+        Console.WriteLine($"specJob {id} ({LegacySpecJobs[id].Name}) is in the legacy table but not in v283 data");
+    return new JsonObject { ["groups"] = groups, ["specJobs"] = specs };
 }
 
 // Item/ItemOption.img: potential options. grade = id / 10000 (raw; meaning resolved in Task 3).
@@ -446,7 +655,26 @@ static bool WithInfo(Wz_Node img, Action<Wz_Node> action)
     finally { image.Unextract(); }
 }
 
+// Resolves a backslash path through the WZ tree, extracting .img images along the way (left extracted; diagnostics only).
+static Wz_Node? FindExtracted(Wz_Node root, string path)
+{
+    var cur = root;
+    foreach (var part in path.Split('\\', '/'))
+    {
+        cur = cur.Nodes[part];
+        if (cur == null) return null;
+        if (cur.GetValue<Wz_Image>() is { } img)
+        {
+            if (!img.TryExtract(out var ex)) throw new InvalidOperationException($"extract failed: {cur.FullPath}", ex);
+            cur = img.Node;
+        }
+    }
+    return cur;
+}
+
 static string? Str(Wz_Node parent, string key) => parent.Nodes[key]?.Value?.ToString();
+
+static bool HasLoose(Wz_Node parent, string key) => parent.Nodes[key] != null || parent.Nodes[key + " "] != null;
 
 // Some items store the key with a trailing space ("reqLevel ", "reqJob "); use it when the exact key is absent.
 static int IntLoose(Wz_Node parent, string key) => parent.Nodes[key] != null ? Int(parent, key) : Int(parent, key + " ");
@@ -491,6 +719,8 @@ static Dictionary<string, string> ParseArgs(string[] a)
     return d;
 }
 
+record DetailRange(string Category, string Detail, List<(int Begin, int End)> Ranges);
+
 record Variant(string Slot, string Name, bool Cash, bool Event, bool TimeLimited, bool FixedPotential, bool Untradeable);
 
 partial class Program
@@ -517,6 +747,32 @@ partial class Program
         ("incPDD", "def"), ("incSpeed", "speed"), ("incJump", "jump"),
         ("bdR", "bossDamage"), ("imdR", "ignoreDef"), ("damR", "damagePct"),
         ("incMHPr", "maxHpPct"), ("incMMPr", "maxMpPct"),
+    };
+
+    // Last-resort search-category fallback for Weapon-folder items outside every range and every id-prefix rule
+    // (v283: 1690xxx placeholders, 1702176; see SearchCategoryOf).
+    static readonly Dictionary<string, string> WeaponFolderIslotCategory = new(StringComparer.Ordinal)
+    {
+        ["Wp"] = "OneHandSword", ["WpSi"] = "TwoHandSword", ["Si"] = "SubWeapon", ["Cp"] = "Armor",
+    };
+
+    // reqJob bit → group id and zh-TW name (confirmed against String/Skill.img 100/200/300/400/500 bookName "X入門").
+    static readonly (int Bit, string Id, string Name)[] JobGroupNames =
+    {
+        (1, "warrior", "劍士"), (2, "magician", "法師"), (4, "bowman", "弓箭手"), (8, "thief", "盜賊"), (16, "pirate", "海盜"),
+    };
+
+    // Special-job table from the user's older notebook (ref/parse_json_to_db.ipynb cell "spec_job", v249/v261 era).
+    // Starting point only: ExportJobs keeps a name only when v283 String/Skill.img confirms it.
+    static readonly Dictionary<int, (string Name, string NameEn)> LegacySpecJobs = new()
+    {
+        [21] = ("狂狼勇士", "Aran"), [22] = ("龍魔導士", "Evan"), [23] = ("精靈遊俠", "Mercedes"), [24] = ("幻影俠盜", "Phantom"),
+        [25] = ("隱月", "Shade"), [27] = ("夜光", "Luminous"), [31] = ("惡魔", "Demon"), [36] = ("傑諾", "Xenon"),
+        [37] = ("爆拳槍神", "Blaster"), [41] = ("劍豪", "Hayato"), [42] = ("陰陽師", "Kanna"), [51] = ("米哈逸", "Mihile"),
+        [61] = ("凱撒", "Kaiser"), [63] = ("凱殷", "Kain"), [64] = ("卡蒂娜", "Cadena"), [65] = ("天使破壞者", "AngelicBuster"),
+        [99] = ("陰陽師", "Kanna"), [101] = ("神之子", "Zero"), [142] = ("凱內西斯", "Kinesis"), [151] = ("阿戴爾", "Adele"),
+        [152] = ("伊利恩", "Illium"), [154] = ("卡莉", "Khali"), [155] = ("亞克", "Ark"), [162] = ("菈菈", "Lara"),
+        [164] = ("虎影", "Hoyoung"), [172] = ("琳恩", "Lynn"), [175] = ("墨玄", "MoXuan"),
     };
 
     // islot code -> zh-TW slot name (manual table; WZ has no localized slot names).
