@@ -79,15 +79,17 @@ fixture 證據（422/422 件，WZ `tuc` 依 index.json → equip/<category>.json
 | 鞋 速度/跳躍 | 1–15★ 表；**11★ = 2**（W2 單星表與累計表矛盾，由 fixture 定） | W2 + fixture | 10 件 ≥15★ 鞋子全部 速度/跳躍 18 |
 | 手套攻 1–15★ | 5,7,9,11,13,14,15★ 各 +1 | W2 | — |
 | HP 不加的部位 | 手套、鞋、臉飾、眼飾（W2）＋耳環、機器心臟、胸章（fixture）→ `noHpSlots` | W2 + fixture | 耳環 16–25★、心臟、VIP 胸章 HP 皆 0 |
+| 'Tm' 部位範圍 | `noHpSlots` / `noDefSlots` 的 'Tm'（機器心臟）同時命中 43 件**龍神/機甲戰神零件**（194–197xxxx、161–165xxxx，islot 也是 Tm，且 `canStarforce` true）| **未驗證**：fixture 只有機器心臟樣本，這 43 件不加 HP/DEF 是規則的副作用、沒有來源 | — |
+| 阿斯特拉副手 172xxxx 的 DEF | 只加到 15★（`statTable.defMaxStar(equip)` = 15；其他裝備 Infinity）：0 防從 1 起算、1–15★ 複利 → 16★ 以上固定 +16 | fixture（`ruleSources.astraDefCap`，TMS；無規則原文） | 5 件 19–25★（手環/羽毛/腕帶/萬能彈藥 24–25★、遺跡 19★）DEF 皆 +16 |
 
-**fixture 驗證結論（Task 4，2026-11-09）**：`starforceStats()` 對 fixture 中 277 件 starforce > 0 的裝備，supports 為 true 的 272 件**全數一致**。過程中被 fixture 推翻並修正的規則：
+**fixture 驗證結論（Task 4，2026-11-09）**：`starforceStats()` 對 fixture 中 277 件 starforce > 0 的裝備，supports 為 true 的 272 件**全數一致**（Task 1b 後 277/277，見下）。過程中被 fixture 推翻並修正的規則：
 1. 16–22★ 屬性分配：原寫「非武器四屬」→ 同名同星的永恆裝備有的有 STR/INT、有的沒有，唯一一致的解釋是「職業屬性 ＋ 基礎＋卷軸後已有的屬性」（16★+ 共 988 個「件×屬性」樣本，星火單獨有該屬性的 34 例全部沒有 16★+ 加成）。武器（命運系）也符合同一規則，不再分武器/非武器。
 2. 0 防裝備的 DEF：照公式從 0 起算會少 1（25★ 得 30），實際 32 → `defSeed` 讓 0 從 1 起算。
 3. 鞋 11★：null → 2。
 4. HP 不加部位：補上耳環、機器心臟、胸章；DEF 不加：機器心臟、胸章、武器表裝備。
 5. `usesWeaponTable`：1354xxx 靈符副手改用武器表（阿斯特拉靈符；只有這 1 件樣本，所以範圍限 1354xxx）。1342xxx 雙刀維持非武器表，未驗證。
 
-未納入測試：5 件 172xxxx 阿斯特拉副手（手環/羽毛/腕帶/遺跡/萬能彈藥）在匯出資料中 `canStarforce = false`，但 fixture 有 19–25★ → `supports()` false、不計算。若視為可強化，屬性/HP/攻都吻合，只有 DEF 不同：實際固定 +16（= 0 防從 1 起算、只到 15★），模型會繼續加到 16★+。等匯出資料修正 `canStarforce` 時需要另外處理。
+**Task 1b（2026-11-09）**：匯出程式把 172xxxx 阿斯特拉副手（id 前 3 碼 172 且 islot Si，114 件；WZ `tuc = 0`）改為 `canStarforce = true`（WZ 依據見 `tools/wz-export/README.md`「172xxxx 阿斯特拉副手」），並加上 DEF 只到 15★ 的規則（`defMaxStar`）。之後 fixture 中 277 件 starforce > 0 的裝備**全部** supported 且一致（原本略過的 5 件：手環/羽毛/腕帶/遺跡/萬能彈藥）。同樣 `tuc = 0` 的 15 件阿斯特拉盾（1098012–1098014、1099023–1099034）沒有 fixture 樣本，維持不可星力。
 
 ## SCROLLS / RECOVERY — `source: 'TMS'`（玩家整理）
 
@@ -158,6 +160,12 @@ fixture 證據（422/422 件，WZ `tuc` 依 index.json → equip/<category>.json
 - 結論：沒有任何觀察到的階級落在官方規則不可能產生的範圍。
 - 全部 196 筆星火做行分解（BOSS 裝 T1–T7、固定 4 行，加上下表的數值規則）→ **196/196 可解**。若限定 BOSS 裝只有 T3–T7，只有 150 筆可解，剩下 46 筆必須含 T1/T2，這也符合強力／永遠在 BOSS 裝不加階的規則。
 - 比例本身不拿來檢驗機率：玩家會挑結果（可選保留舊結果），而且不知道每件用的是哪種星火。
+
+### 可否附加星火 / BOSS 規則（Task 1b）
+
+- `canFlame` 是匯出程式依部位推估（KMS-estimate，見 `tools/wz-export/README.md`），另有逐 id 覆寫：1143471 不朽的遺產（勳章例外 Immortal Legacy）、1202287 古代石板複製品（圖騰例外 Ancient Tablet Replica）→ 可附加。依據 `research/flame.md` 的例外清單＋fixture。
+- 星火的 BOSS 規則（固定 4 行、覺醒 +2 階、BOSS 武器攻指數）讀 `EquipData.flameBoss`，不是 `bossReward`。兩者只在 1202287 不同：WZ `bossReward = 1`，但 fixture 8 筆星火只在非 BOSS 規則下全部可解 → `flameBoss = false`。1143471 的 6 筆在 BOSS 規則下全部可解 → `flameBoss = true`（= bossReward）。
+- 加入這兩件後，`flame.spec.ts` 不再有 canFlame=false 的特例分支：fixture 中所有有星火的裝備都 `canFlame` 且可反解重現。
 
 ### 各階數值（KMS-estimate＋fixture）
 

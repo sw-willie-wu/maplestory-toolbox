@@ -21,6 +21,7 @@ export function starforceStats(equip: EquipData, star: number, afterScroll: Stat
   const weaponTable = STARFORCE.usesWeaponTable(equip)
   const getsHp = !statTable.noHpSlots.includes(equip.slot)
   const getsDef = !weaponTable && !statTable.noDefSlots.includes(equip.slot)
+  const defMaxStar = statTable.defMaxStar(equip)
   const out: Stats = {}
   const gain = (key: StatKey, value: number) => {
     if (value) out[key] = (out[key] ?? 0) + value
@@ -36,7 +37,7 @@ export function starforceStats(equip: EquipData, star: number, afterScroll: Stat
   for (let s = 1; s <= star; s++) {
     const per = statTable.perStar(equip.level, s)
     for (const k of statTable.statKeys(s, equip.jobs, afterScroll)) gain(k, per)
-    if (getsDef) def = statTable.nextDef(def)
+    if (getsDef && s <= defMaxStar) def = statTable.nextDef(def)
 
     if (s <= 15) {
       if (getsHp) {

@@ -18,10 +18,12 @@ const flamed = items.filter((f) => Object.keys(nonZero(f.flame)).length > 0 && i
 
 const hat = loadEquipSync(1005983) // 永恆盜賊頭巾 Lv250
 
+/** `flameBoss` follows `bossReward` unless given (flame rules read `flameBoss`). */
 function fakeEquip(over: Partial<EquipData>): EquipData {
   return {
     ...hat,
     ...over,
+    flameBoss: over.flameBoss ?? over.bossReward ?? hat.flameBoss,
   }
 }
 
@@ -47,8 +49,8 @@ function simulate(equip: EquipData, target: FlameLine[], typeId: string, trials:
   const rand = rng(seed)
   const type = FLAME.flameTypes.find((t) => t.id === typeId)!
   const pool = FLAME.poolFor(equip.isWeapon, equip.level).map((s) => s.id)
-  const counts = Object.entries(FLAME.lineProb(equip.bossReward)).map(([n, p]) => [Number(n), p] as const)
-  const tiers = Object.entries(FLAME.finalTierProb(type, equip.bossReward)).map(([t, p]) => [Number(t), p] as const)
+  const counts = Object.entries(FLAME.lineProb(equip.flameBoss)).map(([n, p]) => [Number(n), p] as const)
+  const tiers = Object.entries(FLAME.finalTierProb(type, equip.flameBoss)).map(([t, p]) => [Number(t), p] as const)
   const tierTotal = tiers.reduce((s, [, p]) => s + p, 0)
   const pick = <T>(table: readonly (readonly [T, number])[], total: number): T => {
     let u = rand() * total
@@ -92,12 +94,8 @@ describe('flame', () => {
     const misses: string[] = []
     for (const f of flamed) {
       const equip = loadEquipSync(f.id)
+      expect(equip.canFlame, `${f.id} ${f.name} has flame data`).toBe(true)
       const res = reverseFlame(equip, f.flame)
-      if (!equip.canFlame) {
-        // flame data on an item WZ marks as not flammable (totem 1202287): reverse refuses by contract
-        expect(res).toEqual([])
-        continue
-      }
       if (res.length > 0 && res.some((ls) => canon(flameStats(equip, ls)) === canon(f.flame))) hit++
       else misses.push(`${f.id} ${f.name} ${JSON.stringify(f.flame)}`)
     }
@@ -108,10 +106,9 @@ describe('flame', () => {
   it('reverse results respect line count, pool, tier range and boss same-family', () => {
     for (const f of flamed) {
       const equip = loadEquipSync(f.id)
-      if (!equip.canFlame) continue
       const pool = new Set(FLAME.poolFor(equip.isWeapon, equip.level).map((s) => s.id))
-      const range = FLAME.tierRange(equip.bossReward)
-      const lc = FLAME.lineCount(equip.bossReward)
+      const range = FLAME.tierRange(equip.flameBoss)
+      const lc = FLAME.lineCount(equip.flameBoss)
       for (const ls of reverseFlame(equip, f.flame)) {
         expect(ls.length).toBeGreaterThanOrEqual(lc.min)
         expect(ls.length).toBeLessThanOrEqual(lc.max)
@@ -121,9 +118,31 @@ describe('flame', () => {
           expect(l.tier).toBeGreaterThanOrEqual(range.min)
           expect(l.tier).toBeLessThanOrEqual(range.max)
         }
-        if (equip.bossReward) expect(ls.every((l) => l.tier <= 3) || ls.every((l) => l.tier >= 3)).toBe(true)
+        if (equip.flameBoss) expect(ls.every((l) => l.tier <= 3) || ls.every((l) => l.tier >= 3)).toBe(true)
       }
     }
+  })
+
+  it('flame overrides: 不朽的遺產 (boss rules) and 古代石板複製品 (non-boss rules) fixtures reverse-solve', () => {
+    for (const [id, boss, count] of [
+      [1143471, true, 6],
+      [1202287, false, 8],
+    ] as const) {
+      const equip = loadEquipSync(id)
+      expect(equip).toMatchObject({ canFlame: true, flameBoss: boss })
+      const fs = flamed.filter((f) => f.id === id)
+      expect(fs).toHaveLength(count)
+      for (const f of fs) {
+        const res = reverseFlame(equip, f.flame)
+        expect(res.length, `${id}`).toBeGreaterThan(0)
+        expect(res.some((ls) => canon(flameStats(equip, ls)) === canon(f.flame))).toBe(true)
+        for (const ls of res) expect(ls.length >= 1 && (!boss || ls.length === 4)).toBe(true)
+      }
+    }
+    // the tablet's flames do not solve under the boss rules its WZ bossReward would imply
+    const tablet = loadEquipSync(1202287)
+    const asBoss = { ...tablet, flameBoss: true }
+    expect(flamed.filter((f) => f.id === 1202287).some((f) => reverseFlame(asBoss, f.flame).length === 0)).toBe(true)
   })
 
   it('永恆盜賊頭巾 add 42/21/63/3% reverses to include STR/LUK T6 + DEX/LUK T3 + allStat', () => {

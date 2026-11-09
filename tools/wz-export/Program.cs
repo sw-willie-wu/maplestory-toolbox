@@ -2,6 +2,7 @@
 // Usage (see README.md):
 //   dotnet run -- --client "<MapleStory dir>" --probe 1005983,1472290      print info nodes of items
 //   dotnet run -- --client "<MapleStory dir>" --flags exceptUpgrade,Etuc    sample items carrying info keys
+//   dotnet run -- --client "<MapleStory dir>" --table islot,tuc,cash         TSV of info keys for every equip
 //   dotnet run -- --client "<MapleStory dir>" --out ../../public/data/tms-v283
 using System.Globalization;
 using System.Text.Encodings.Web;
@@ -62,7 +63,21 @@ if (opts.TryGetValue("flags", out var flagList))
     return;
 }
 
-var outDir = opts.GetValueOrDefault("out") ?? throw new ArgumentException("--out <dir> (or --probe/--flags) is required");
+if (opts.TryGetValue("table", out var tableKeys))
+{
+    // TSV of every equip: id, category, name, then the raw value of each requested info key ("" when absent,
+    // "{n}" for a node with n children). Tabs / line breaks inside values become spaces (some names contain them).
+    var names = LoadEquipNames(root);
+    var keys = tableKeys.Split(',');
+    static string Cell(string? v) => (v ?? "").Replace('\t', ' ').Replace('\r', ' ').Replace('\n', ' ');
+    Console.WriteLine("id\tcategory\tname\t" + string.Join("\t", keys));
+    foreach (var (cat, id, img) in EnumerateEquipImgs(character))
+        WithInfo(img, info => Console.WriteLine($"{id}\t{cat}\t{Cell(names.GetValueOrDefault(id))}\t" +
+            string.Join("\t", keys.Select(k => info.Nodes[k] is { } n ? (n.Nodes.Count > 0 ? "{" + n.Nodes.Count + "}" : Cell(n.Value?.ToString())) : ""))));
+    return;
+}
+
+var outDir = opts.GetValueOrDefault("out") ?? throw new ArgumentException("--out <dir> (or --probe/--flags/--table) is required");
 Export(root, character, Path.GetFullPath(outDir));
 return;
 
@@ -81,6 +96,8 @@ static void Export(Wz_Node root, Wz_Node character, string outDir)
     var negativeReqJob = new SortedDictionary<int, List<int>>();
     var magicMismatch = new List<string>();
     var unnamed = 0;
+    var excluded = new SortedDictionary<string, int>(StringComparer.Ordinal);
+    var variants = new Dictionary<int, Variant>();
     var seenIds = new HashSet<int>();
     var hasPrefix1552 = EnumerateEquipImgs(character).Any(e => e.Category == "Weapon" && e.Id / 1000 == 1552);
     // 1254 = TMS 陰陽扇 (Kanna; magician-only, incMAD > incPAD on 76/78 items) - TMS addition to the plan list.
@@ -116,8 +133,17 @@ static void Export(Wz_Node root, Wz_Node character, string outDir)
 
             var bossReward = Int(info, "bossReward") == 1;
             // No WZ starforce-forbid flag is known (exceptUpgrade's meaning is unconfirmed: Destiny weapons carry it yet are 22★).
-            var canStarforce = tuc > 0 && !cash;
-            var canFlame = !cash && FlameCategory(cat, slot, prefix3);
+            // 172xxxx 阿斯特拉 secondaries have tuc = 0 but are star-forced in real data (fixture 19–25★); see README.
+            var astraSecondary = prefix3 == 172 && slot == "Si";
+            var canStarforce = (tuc > 0 || astraSecondary) && !cash;
+            var canFlame = FlameOverrides.TryGetValue(id, out var flameOverride) ? flameOverride.CanFlame : !cash && FlameCategory(cat, slot, prefix3);
+            // Flame rules (line count / tier range) follow bossReward except for explicit overrides (README).
+            var flameBoss = flameOverride.FlameBoss ?? bossReward;
+            var timeLimited = Int(info, "timeLimited") == 1;
+            var fixedPotential = Int(info, "fixedPotential") == 1;
+            var eventVariant = Int(info, "exceptTransmission") == 1 || Int(info, "undecomposable") == 1;
+            var accountShare = Int(info, "accountSharable") == 1 || Int(info, "sharableOnce") == 1;
+            var untradeable = Int(info, "tradeBlock") == 1; // not equipTradeBlock (bind on equip): used for the 綁定版 label
             var exceptionalMax = Math.Max(0, Int(info, "Etuc"));
             var canExceptional = exceptionalMax > 0;
             var tradeBlock = Int(info, "tradeBlock") == 1 || Int(info, "equipTradeBlock") == 1;
@@ -139,8 +165,14 @@ static void Export(Wz_Node root, Wz_Node character, string outDir)
                 ["bossReward"] = bossReward, ["canStarforce"] = canStarforce, ["canFlame"] = canFlame,
                 ["canExceptional"] = canExceptional, ["tradeBlock"] = tradeBlock,
                 ["superior"] = superior, ["blockGoldHammer"] = blockGoldHammer, ["exceptionalMax"] = exceptionalMax,
+                ["flameBoss"] = flameBoss, ["timeLimited"] = timeLimited, ["fixedPotential"] = fixedPotential,
+                ["eventVariant"] = eventVariant, ["accountShare"] = accountShare,
             };
             if (!seenIds.Add(id)) { Console.Error.WriteLine($"WARN duplicate id {id} in {cat}, keeping first"); return; }
+            // Test / placeholder equipment is not exported at all (neither equip/ nor index.json); see ExcludeRule.
+            // GM-stat items (STR/DEX/INT/LUK all ≥ 999, e.g. 維澤特帽 1002140/1003142) are excluded as well.
+            var gmStats = new[] { "str", "dex", "int", "luk" }.All(k => (baseStats[k]?.GetValue<int>() ?? 0) >= 999);
+            if ((gmStats ? "gm-stats" : ExcludeRule(id, name)) is { } rule) { excluded[rule] = excluded.GetValueOrDefault(rule) + 1; return; }
             if (!byCategory.TryGetValue(cat, out var map)) byCategory[cat] = map = new();
             map[id] = equip;
             // Unnamed items stay in equip/<category>.json but are not searchable via index.json.
@@ -150,6 +182,7 @@ static void Export(Wz_Node root, Wz_Node character, string outDir)
                 ["id"] = id, ["name"] = name, ["category"] = cat, ["slot"] = slot, ["level"] = level,
                 ["cash"] = cash, ["tuc"] = tuc, ["setId"] = setId, ["jobs"] = JobsOf(reqJob),
             });
+            variants[id] = new Variant(slot, name, cash, eventVariant, timeLimited, fixedPotential, untradeable);
         });
     }
 
@@ -160,6 +193,8 @@ static void Export(Wz_Node root, Wz_Node character, string outDir)
         WriteJson(Path.Combine(equipDir, cat + ".json"), obj);
     }
     index.Sort((a, b) => a["id"]!.GetValue<int>().CompareTo(b["id"]!.GetValue<int>()));
+    var equipById = byCategory.Values.SelectMany(m => m).ToDictionary(kv => kv.Key, kv => kv.Value);
+    var (labelCounts, fallbackCounts) = LabelVariants(index, variants, equipById);
     WriteJson(Path.Combine(outDir, "index.json"), new JsonArray(index.ToArray<JsonNode>()));
 
     WriteJson(Path.Combine(outDir, "meta.json"), new JsonObject
@@ -185,13 +220,98 @@ static void Export(Wz_Node root, Wz_Node character, string outDir)
     if (potential != null) WriteJson(potentialPath, potential);
     else if (File.Exists(potentialPath)) File.Delete(potentialPath);
 
-    Console.WriteLine($"Exported {seenIds.Count} equips in {byCategory.Count} categories ({index.Count} in index.json) to {outDir}");
+    Console.WriteLine($"Exported {byCategory.Values.Sum(m => m.Count)} equips in {byCategory.Count} categories ({index.Count} in index.json) to {outDir}");
     Console.WriteLine("Per category: " + string.Join(", ", byCategory.Select(kv => $"{kv.Key}={kv.Value.Count}")));
     Console.WriteLine($"Items without a String name (kept in equip/, excluded from index.json): {unnamed}");
+    Console.WriteLine($"Excluded test/placeholder items ({excluded.Values.Sum()}): " + string.Join(", ", excluded.Select(kv => $"{kv.Key}={kv.Value}")));
     Console.WriteLine($"Magic prefixes: {string.Join(",", magicPrefixes.Order())} (1552 present: {hasPrefix1552})");
+    Console.WriteLine($"Variants: {index.Count(e => e["canonical"]!.GetValue<bool>())} canonical, " +
+        $"{index.Count(e => e["variantLabel"]!.GetValue<string>() != "")} labelled, " +
+        $"{index.Count(e => !e["canonical"]!.GetValue<bool>() && e["variantLabel"]!.GetValue<string>() == "")} non-canonical without label");
+    Console.WriteLine("Variant labels: " + string.Join(", ", labelCounts.OrderByDescending(kv => kv.Value).Select(kv => $"{kv.Key}={kv.Value}")));
+    Console.WriteLine("Fallback labels: " + string.Join(", ", fallbackCounts.Select(kv => $"{kv.Key}={kv.Value}")));
     Console.WriteLine("Negative reqJob: " + (negativeReqJob.Count == 0 ? "none" : string.Join(", ", negativeReqJob.Select(kv => $"{kv.Key} x{kv.Value.Count} [{string.Join(",", kv.Value)}]"))));
     Console.WriteLine($"Magic-weapon cross-check mismatches ({magicMismatch.Count}):");
     foreach (var m in magicMismatch) Console.WriteLine("  WARN " + m);
+}
+
+// Index variants: within each (slot, name, cash) group exactly one entry is canonical — the one with the fewest of
+// eventVariant / timeLimited / fixedPotential (normally none), ties → lowest id. exceptUpgrade is NOT used
+// (Destiny weapons carry it). Non-canonical entries get variantLabel = 活動版・期限・固定潛能 parts in that order,
+// or 綁定版 when none apply and the entry is untradeable (info/tradeBlock) while the canonical one is not.
+// Still empty → fallback from the first EquipData field that differs from the canonical (controller ruling):
+// tuc → 可上卷N次, level → Lv.N, base → 數值不同, any other field (category, jobs, flags…) → #<id>;
+// identical in every field except id → '' (the UI collapses those).
+// Returns entry count per non-empty label and per fallback kind. Mutates the index entries (adds canonical / variantLabel).
+static (Dictionary<string, int> Labels, Dictionary<string, int> Fallbacks) LabelVariants(
+    List<JsonObject> index, Dictionary<int, Variant> variants, Dictionary<int, JsonObject> equipById)
+{
+    var counts = new Dictionary<string, int>(StringComparer.Ordinal);
+    var fallbacks = new Dictionary<string, int>(StringComparer.Ordinal) { ["可上卷N次"] = 0, ["Lv.N"] = 0, ["數值不同"] = 0, ["#<id>"] = 0, ["identical"] = 0 };
+    // Cash and non-cash entries never compete (controller ruling): e.g. cash 紅鷹鋼盔 1000009 vs non-cash 1000054.
+    var groups = index.GroupBy(e => { var v = variants[e["id"]!.GetValue<int>()]; return (v.Slot, v.Name, v.Cash); });
+    foreach (var g in groups)
+    {
+        var members = g.Select(e => (Entry: e, Id: e["id"]!.GetValue<int>())).ToList();
+        int Score(int id) { var v = variants[id]; return (v.Event ? 1 : 0) + (v.TimeLimited ? 1 : 0) + (v.FixedPotential ? 1 : 0); }
+        var canonicalId = members.OrderBy(m => Score(m.Id)).ThenBy(m => m.Id).First().Id;
+        var canonicalUntradeable = variants[canonicalId].Untradeable;
+        foreach (var (entry, id) in members)
+        {
+            var isCanonical = id == canonicalId;
+            var label = "";
+            if (!isCanonical)
+            {
+                var v = variants[id];
+                var parts = new List<string>();
+                if (v.Event) parts.Add("活動版");
+                if (v.TimeLimited) parts.Add("期限");
+                if (v.FixedPotential) parts.Add("固定潛能");
+                if (parts.Count == 0 && v.Untradeable && !canonicalUntradeable) parts.Add("綁定版");
+                label = string.Join("・", parts);
+                if (label != "") counts[label] = counts.GetValueOrDefault(label) + 1;
+                else
+                {
+                    var (kind, text) = FallbackLabel(equipById[id], equipById[canonicalId]);
+                    fallbacks[kind]++;
+                    label = text;
+                }
+            }
+            entry["canonical"] = isCanonical;
+            entry["variantLabel"] = label;
+        }
+    }
+    return (counts, fallbacks);
+}
+
+// First differing calc field of an entry vs its group's canonical → (kind, label); ("identical", "") when equal except id.
+static (string Kind, string Label) FallbackLabel(JsonObject e, JsonObject canonical)
+{
+    // Compare serialized forms (null-valued keys such as setId compare as "null").
+    static string Ser(JsonNode? n) => n?.ToJsonString(JsonOpts) ?? "null";
+    bool Same(string key) => Ser(e[key]) == Ser(canonical[key]);
+    if (!Same("tuc")) return ("可上卷N次", $"可上卷{e["tuc"]!.GetValue<int>()}次");
+    if (!Same("level")) return ("Lv.N", $"Lv.{e["level"]!.GetValue<int>()}");
+    if (!Same("base")) return ("數值不同", "數值不同");
+    foreach (var (key, _) in e)
+        if (key != "id" && !Same(key)) return ("#<id>", $"#{e["id"]!.GetValue<int>()}");
+    foreach (var (key, _) in canonical)
+        if (key != "id" && !e.ContainsKey(key)) return ("#<id>", $"#{e["id"]!.GetValue<int>()}");
+    return ("identical", "");
+}
+
+// Test / placeholder equipment excluded from the export (user decision, Task 1b); name-based, cash items included.
+// Returns the first matching rule, or null to keep. Checked against the KEEP list in equip-data.spec.ts
+// (測試用ESP限制器 1262001/1262018/1262022/1262060, 烏勒斯的握力測試機, 名譽開發者, 祕密團體臨時成員, English medals);
+// Explicit ids: 1932236 "2014 horse" (placeholder mount, user-confirmed).
+static string? ExcludeRule(int id, string name)
+{
+    if (id is 1932236) return "explicit-id";                                                 // "2014 horse"
+    if (name.Contains("dummy", StringComparison.OrdinalIgnoreCase)) return "dummy";            // e.g. 1302362 1702207_dummy
+    if (name.Length is >= 1 and <= 3 && name.All(char.IsAsciiLetter)) return "ascii1-3";     // e.g. "aa" 1932565
+    if (name.Contains("GM", StringComparison.Ordinal)) return "GM";                          // e.g. 1007171 楓之谷GM的帽子
+    if (name.Any(c => c is >= '\uAC00' and <= '\uD7A3')) return "hangul";                    // untranslated KMS-only items
+    return null;
 }
 
 static JsonNode JobsOf(int reqJob)
@@ -371,8 +491,17 @@ static Dictionary<string, string> ParseArgs(string[] a)
     return d;
 }
 
+record Variant(string Slot, string Name, bool Cash, bool Event, bool TimeLimited, bool FixedPotential, bool Untradeable);
+
 partial class Program
 {
+    // Per-id flame overrides (README "canFlame / flameBoss overrides"); FlameBoss null = follow bossReward.
+    static readonly Dictionary<int, (bool CanFlame, bool? FlameBoss)> FlameOverrides = new()
+    {
+        [1143471] = (true, null),  // 不朽的遺產 (medal): KMS exception "Immortal Legacy"; 6/6 fixture flames solve under boss rules
+        [1202287] = (true, false), // 古代石板複製品 (totem): KMS exception "Ancient Tablet Replica"; WZ bossReward=1 but 8/8 fixture flames solve only under non-boss rules
+    };
+
     static readonly JsonSerializerOptions JsonOpts = new()
     {
         WriteIndented = false,

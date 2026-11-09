@@ -72,9 +72,9 @@ describe('computeBreakdown — acceptance 1 (Nexon export)', () => {
   const starred = items.filter((f) => f.starforce > 0)
   const supported = starred.filter((f) => STARFORCE.supports(loadEquipSync(f.id)))
 
-  it('starforce coverage: only the five 172xxxx 阿斯特拉 secondaries are skipped', () => {
+  it('starforce coverage: no star-forced fixture item is skipped (172xxxx 阿斯特拉 included since Task 1b)', () => {
     const skipped = new Set(starred.filter((f) => !supported.includes(f)).map((f) => f.id))
-    expect(skipped).toEqual(new Set([1723902, 1720602, 1721102, 1720801, 1722902]))
+    expect(skipped).toEqual(new Set())
   })
 
   it('starforce part matches API given scroll part', () => {
@@ -86,7 +86,7 @@ describe('computeBreakdown — acceptance 1 (Nexon export)', () => {
       if (!sameStats(b.starforce, f.starforceStats)) misses.push(`${f.id} ${f.name} ${f.starforce}★`)
     }
     expect(misses).toEqual([])
-    expect(supported.length).toBe(starred.length - 5) // 272 of 277 starred items
+    expect(supported.length).toBe(starred.length) // all 277 starred items
   })
 
   it('total matches API (excl. exceptional) for items whose every part is reproducible', () => {
@@ -125,11 +125,11 @@ describe('computeBreakdown — acceptance 1 (Nexon export)', () => {
     }
     console.info(`total reproduced for ${reproducible}/${items.length} fixture items; skipped ${JSON.stringify(skipped)}`)
     expect(misses).toEqual([])
-    // Not reproducible (actual when written: 287 of 422 reproduced): 5 unsupported-starforce secondaries, 116 scroll
-    // parts reverseScroll cannot explain (random / etc sources), 14 flames on canFlame=false items (1202287 totem,
-    // 1143471 medal). The scroll count depends on reverseScroll finishing within REVERSE_TIME_BUDGET_MS (350ms per
+    // Not reproducible (actual when written: 306 of 422 reproduced since Task 1b; was 287 before the 172xxxx
+    // star force and 1202287/1143471 flame fixes): 116 scroll parts reverseScroll cannot explain (random / etc
+    // sources). The scroll count depends on reverseScroll finishing within REVERSE_TIME_BUDGET_MS (350ms per
     // item); a much slower machine could time some out and drop reproductions, hence a floor and not an exact count.
-    expect(reproducible).toBeGreaterThanOrEqual(280)
+    expect(reproducible).toBeGreaterThanOrEqual(299)
   })
 })
 

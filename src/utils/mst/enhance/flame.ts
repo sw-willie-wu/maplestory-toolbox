@@ -1,6 +1,8 @@
 // 追加屬性（星火）: stats from lines, probability of one flame use, reverse decomposition (Task 7).
 // Rules (TMS official probabilities / pools, KMS-estimate per-tier values) live in rules/flame.ts — see sources.md FLAME.
 // Per-line value notes (estimates) are exposed through `flameNotes`; rule-level sources via FLAME.ruleSources.
+// Boss flame rules follow `equip.flameBoss` (not `bossReward`): they differ for per-id overrides such as
+// 古代石板複製品 1202287 (WZ bossReward=1, flames roll under non-boss rules) — see tools/wz-export/README.md.
 import { FLAME, type FlameStatDef } from './rules/flame'
 import type { EquipData, StatKey, Stats } from './types'
 
@@ -16,7 +18,7 @@ function baseAttFor(equip: EquipData, stat: string): number {
 }
 
 function lineValue(equip: EquipData, stat: string, tier: number): number {
-  return FLAME.tierValue(stat, equip.level, tier, equip.isWeapon, baseAttFor(equip, stat), equip.bossReward)
+  return FLAME.tierValue(stat, equip.level, tier, equip.isWeapon, baseAttFor(equip, stat), equip.flameBoss)
 }
 
 /** Stats added by these flame lines. Items that cannot be flamed get {}. Unknown stat ids throw. */
@@ -36,7 +38,7 @@ export function flameStats(equip: EquipData, lines: FlameLine[]): Stats {
 export function flameNotes(equip: EquipData, lines: FlameLine[]): string[] {
   const notes = new Set<string>()
   for (const l of lines) {
-    const n = FLAME.valueNote(l.stat, l.tier, equip.isWeapon, equip.bossReward)
+    const n = FLAME.valueNote(l.stat, l.tier, equip.isWeapon, equip.flameBoss)
     if (n) notes.add(n)
   }
   return [...notes]
@@ -77,7 +79,7 @@ export function flameProbability(
   const pool = new Set(FLAME.poolFor(equip.isWeapon, equip.level).map((s) => s.id))
   for (const stat of want.keys()) if (!pool.has(stat)) return { p: 0, expected: Infinity }
 
-  const tiers = FLAME.finalTierProb(type, equip.bossReward)
+  const tiers = FLAME.finalTierProb(type, equip.flameBoss)
   const tierTotal = Object.values(tiers).reduce((a, b) => a + b, 0)
   const atLeast = (min: number) =>
     Object.entries(tiers).reduce((s, [t, p]) => (Number(t) >= min ? s + p : s), 0) / tierTotal
@@ -88,7 +90,7 @@ export function flameProbability(
   const N = pool.size
   const k = want.size
   let presentP = 0
-  for (const [n, q] of Object.entries(FLAME.lineProb(equip.bossReward))) {
+  for (const [n, q] of Object.entries(FLAME.lineProb(equip.flameBoss))) {
     presentP += q * (choose(N - k, Number(n) - k) / choose(N, Number(n)))
   }
 
@@ -118,10 +120,10 @@ export function reverseFlame(equip: EquipData, observed: Stats, limit = 50): Fla
   if (remaining.size === 0) return [[]]
   for (const v of remaining.values()) if (v < 0 || !Number.isInteger(v)) return []
 
-  const lc = FLAME.lineCount(equip.bossReward)
-  const range = FLAME.tierRange(equip.bossReward)
+  const lc = FLAME.lineCount(equip.flameBoss)
+  const range = FLAME.tierRange(equip.flameBoss)
   // Boss items: one flame use fixes the family → tier window per family.
-  const families = equip.bossReward
+  const families = equip.flameBoss
     ? [
         { min: Math.max(range.min, 1), max: Math.min(range.max, 3) },
         { min: Math.max(range.min, 3), max: range.max },

@@ -29,6 +29,14 @@ export interface IndexEntry {
   tuc: number
   setId: number | null
   jobs: JobGroup[] | 'all'
+  /** Exactly one entry per (slot, name, cash) group is canonical (no event / time-limited / fixed-potential variant if possible, then lowest id). */
+  canonical: boolean
+  /**
+   * '' for canonical entries; otherwise 活動版・期限・固定潛能 parts (that order) or 綁定版; else a fallback from the first
+   * field differing from the canonical: 可上卷N次 (tuc) / Lv.N (level) / 數值不同 (base) / #<id> (anything else);
+   * '' when identical to the canonical except id (collapse in the UI). See tools/wz-export/README.md.
+   */
+  variantLabel: string
 }
 
 export interface SetInfo {
@@ -61,6 +69,12 @@ export interface EquipData {
   superior: boolean // WZ info/superiorEqp
   blockGoldHammer: boolean // WZ info/blockGoldHammer
   exceptionalMax: number // WZ info/Etuc (0 if absent); canExceptional === exceptionalMax > 0
+  /** Boss rules for flames (4 lines, boss tier bonus). = bossReward except per-id overrides (古代石板複製品 1202287: false). */
+  flameBoss: boolean
+  timeLimited: boolean // WZ info/timeLimited
+  fixedPotential: boolean // WZ info/fixedPotential
+  eventVariant: boolean // WZ info/exceptTransmission || info/undecomposable
+  accountShare: boolean // WZ info/accountSharable || info/sharableOnce
 }
 
 export interface Sourced {

@@ -45,13 +45,22 @@ export interface StarforceStatTable {
   statKeys(star: number, jobs: JobGroup[] | 'all', afterScroll: Stats): StatKey[]
   /** Max HP gained by reaching `star` (1–15★; 3★ = +5 per fixture). Not for `noHpSlots`. Weapon-table items also add the same MP. */
   hpPerStar(star: number): number
-  /** Slots without star force Max HP: gloves, shoes, face/eye accessories (W2) + earrings, hearts, badges (fixture). */
+  /**
+   * Slots without star force Max HP: gloves, shoes, face/eye accessories (W2) + earrings, hearts, badges (fixture).
+   * 'Tm' is also the islot of 43 dragon / mechanic parts (194–197xxxx, 161–165xxxx); unverified for them (sources.md).
+   */
   noHpSlots: readonly string[]
   /**
    * Slots without star force DEF: hearts, badges (fixture). Weapon-table items get no DEF either.
    * Hearts: only verified for 0-DEF hearts; hearts with base DEF > 0 are unverified (sources.md).
+   * 'Tm' also covers 43 dragon / mechanic parts (194–197xxxx, 161–165xxxx): unverified for them (sources.md).
    */
   noDefSlots: readonly string[]
+  /**
+   * Last star that still adds DEF: 15 for the 172xxxx 阿斯特拉 secondaries (fixture: 0 DEF → fixed +16 at 19–25★,
+   * i.e. the 1–15★ compounding only), Infinity for everything else. See ruleSources.astraDefCap.
+   */
+  defMaxStar(equip: EquipData): number
   /** Speed & jump gained by reaching `star` on shoes (1–15★). */
   shoeSpeedJumpPerStar(star: number): number
   /** Gloves ATT (or MATT, whichever the gloves have) gained by reaching `star` (1–15★). */
@@ -155,6 +164,7 @@ export type StarforceRuleKey =
   | 'statTable'
   | 'attTable'
   | 'usesWeaponTable'
+  | 'astraDefCap'
 
 export interface StarforceRules extends Sourced {
   /** false for superior equipment (different, unsourced rules) and equipment that cannot be star-forced. */
@@ -236,6 +246,7 @@ export const STARFORCE: StarforceRules = {
     hpPerStar: (star) => HP_1_15[star - 1] ?? 0,
     noHpSlots: ['Gv', 'So', 'Af', 'Ay', 'Ae', 'Tm', 'Ba'],
     noDefSlots: ['Tm', 'Ba'],
+    defMaxStar: (equip) => (Math.floor(equip.id / 10000) === 172 && equip.slot === 'Si' ? 15 : Infinity),
     shoeSpeedJumpPerStar: (star) => SHOE_1_15[star - 1] ?? 0,
     gloveAttPerStar: (star) => GLOVE_1_15[star - 1] ?? 0,
     nextDef: (def) => def + Math.floor(def * 0.05) + 1,
@@ -298,6 +309,12 @@ export const STARFORCE: StarforceRules = {
       ref:
         'fixture (sources.md STARFORCE): weapons / 1354xxx 靈符 → weapon table, shields / 172xxxx → non-weapon table; ' +
         '1342xxx katara (dual blade) non-weapon table is UNVERIFIED (no fixture sample), as is the rest of 135xxxx',
+    },
+    astraDefCap: {
+      source: 'TMS',
+      ref:
+        'fixture (Nexon API, sources.md STARFORCE): 5 阿斯特拉 172xxxx secondaries at 19–25★ all have star force DEF +16 ' +
+        '(= 0 DEF seeded at 1, compounding 1–15★ only); no rule text found',
     },
   },
 }

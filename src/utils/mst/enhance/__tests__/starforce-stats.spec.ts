@@ -28,11 +28,25 @@ const find = (id: number): FixtureItem => {
 const calc = (f: FixtureItem): Stats => starforceStats(loadEquipSync(f.id), f.starforce, add(f.base, f.scroll))
 
 describe('starforceStats', () => {
-  it('fixture coverage: every item resolves; only the five 172xxxx 阿斯特拉 secondaries are unsupported', () => {
+  it('fixture coverage: every item resolves and every star-forced fixture item is supported', () => {
     expect(inIndex.length).toBe(items.length)
     const skipped = new Set(inIndex.filter((f) => !supported.includes(f)).map((f) => f.id))
-    // canStarforce false in the WZ export although the fixture shows 19–25★ (see sources.md STARFORCE).
-    expect(skipped).toEqual(new Set([1723902, 1720602, 1721102, 1720801, 1722902]))
+    expect(skipped).toEqual(new Set())
+  })
+
+  it('172xxxx 阿斯特拉 secondaries: DEF only through 15★ (0 DEF → fixed +16 at 19–25★)', () => {
+    const ids = [1723902, 1720602, 1721102, 1720801, 1722902]
+    for (const id of ids) {
+      const f = find(id)
+      expect(f.starforce).toBeGreaterThan(15)
+      expect(calc(f).def, `${id}`).toBe(16)
+    }
+    const equip = loadEquipSync(1723902)
+    expect(STARFORCE.statTable.defMaxStar(equip)).toBe(15)
+    expect(STARFORCE.statTable.defMaxStar(loadEquipSync(1005983))).toBe(Infinity)
+    // 15★ and below are unchanged by the cap
+    expect(starforceStats(equip, 15, {}).def).toBe(16)
+    expect(starforceStats(equip, 8, {}).def).toBe(9)
   })
 
   it.each(supported.map((f) => [f.id, f.name, f.starforce, f] as const))(
