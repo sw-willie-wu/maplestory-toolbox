@@ -22,7 +22,7 @@ const MIN_HITS = 150
 const probeOf = (equip: EquipData, n: number): EquipData => ({ ...equip, tuc: Math.max(equip.tuc, n) })
 const statsOf = (equip: EquipData, combo: ScrollEntry[], n: number) =>
   nonZero(scrollStats(probeOf(equip, n), { entries: combo, failCount: 0 }, {}))
-const has = (res: ScrollEntry[][], want: { scrollId: string; choice: string; count: number }[]) =>
+const has = (res: ScrollEntry[][], want: ScrollEntry[]) =>
   res.some(
     (c) =>
       c.length === want.length &&
