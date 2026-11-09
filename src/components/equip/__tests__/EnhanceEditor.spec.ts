@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest'
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { reactive } from 'vue'
 import EnhanceEditor from '../EnhanceEditor.vue'
-import { emptyState, lockedTabs, type EnhanceState, type EnhanceTab } from '@/utils/mst/enhance/equip'
+import { emptyState, type EnhanceState } from '@/utils/mst/enhance/equip'
+import { lockReasons, PANELS, type PanelId } from '../panels'
 import { loadEquipSync, readDataJson } from '@/utils/mst/enhance/__tests__/helpers'
 import { POTENTIAL, type RawPotentialOption } from '@/utils/mst/enhance/rules/potential'
 import { reverseScrollDetailed, REVERSE_MAX_USED_SLOTS } from '@/utils/mst/enhance/scroll'
@@ -14,15 +15,15 @@ const CAP_BOSS = 1005983 // 永恆盜賊頭巾 Lv250, tuc 12, boss flames
 const CAP = 1003601 // 天照的頭盔 Lv150, non-boss flames, tuc 11
 const FIST = 1472290 // 命運鬥拳 Lv250 boss weapon
 const MEDAL = 1143471 // 不朽的遺產 Lv250, tuc 0, exceptionalMax 3 (only level 2 observed)
-const FACE_EX = 1012632 // 口紅控制器標誌, exceptionalMax 1
 const BLOCKED = 1122000 // 闇黑龍王項鍊, blockGoldHammer
-const SUPERIOR = 1072732 // 赫力席母精銳戰士靴 (superior → star force unsupported)
 
 const potentialOptions = POTENTIAL.buildOptions(readDataJson<RawPotentialOption[]>('potential-options.json'))
 
+type Panel = Exclude<PanelId, 'picker'>
+
 function mountEditor(
   id: number,
-  opts: { locked?: Set<EnhanceTab>; state?: Partial<EnhanceState>; potential?: boolean } = {},
+  opts: { active?: Panel; state?: Partial<EnhanceState>; potential?: boolean; potentialError?: string | null } = {},
 ): { w: VueWrapper; state: EnhanceState; equip: EquipData } {
   const equip = loadEquipSync(id)
   const state = reactive({ ...emptyState(equip), ...opts.state }) as EnhanceState
@@ -30,16 +31,16 @@ function mountEditor(
     props: {
       equip,
       state,
-      locked: opts.locked ?? lockedTabs(equip),
+      active: opts.active ?? PANELS.find((p) => !lockReasons(equip).has(p.id))!.id,
       potentialOptions: opts.potential === false ? null : potentialOptions,
+      potentialError: opts.potentialError ?? null,
     },
   })
   return { w, state, equip }
 }
 
-const tab = (w: VueWrapper, id: string) => w.find(`[data-test="tab-${id}"]`)
-async function open(w: VueWrapper, id: string) {
-  await tab(w, id).trigger('click')
+async function open(w: VueWrapper, id: Panel) {
+  await w.setProps({ active: id })
 }
 const optionTexts = (w: VueWrapper, sel: string) =>
   w
@@ -47,28 +48,45 @@ const optionTexts = (w: VueWrapper, sel: string) =>
     .findAll('option')
     .map((o) => o.text())
 
-describe('EnhanceEditor tabs', () => {
-  it('locked tabs are disabled and say why', () => {
-    const { w } = mountEditor(RING)
-    expect(tab(w, 'flame').attributes('disabled')).toBeDefined()
-    expect(tab(w, 'flame').attributes('title')).toContain('無法')
-    expect(tab(w, 'starforce').attributes('disabled')).toBeUndefined()
-
-    const sup = mountEditor(SUPERIOR).w
-    expect(tab(sup, 'starforce').attributes('disabled')).toBeDefined()
-    expect(tab(sup, 'starforce').attributes('title')).toContain('不支援')
+describe('EnhanceEditor panels', () => {
+  it('shows only the panel given by active, without its own tab bar or locked note', async () => {
+    const { w } = mountEditor(CAP_BOSS, { active: 'scroll' })
+    expect(w.find('[data-test="panel-scroll"]').exists()).toBe(true)
+    expect(w.find('[data-test="panel-starforce"]').exists()).toBe(false)
+    expect(w.find('[role="tablist"]').exists()).toBe(false)
+    expect(w.find('[data-test="locked-note"]').exists()).toBe(false)
+    await open(w, 'reverse')
+    expect(w.find('[data-test="panel-reverse"]').exists()).toBe(true)
+    expect(w.find('[data-test="panel-scroll"]').exists()).toBe(false)
   })
 
-  it('opens the first unlocked tab', () => {
-    const { w } = mountEditor(MEDAL) // star force / scroll / hammer locked
-    expect(w.find('[data-test="panel-flame"]').exists()).toBe(true)
+  it('keeps panel-local inputs when switching panels (KeepAlive)', async () => {
+    const { w } = mountEditor(CAP_BOSS)
+    await w.find('[data-test="sf-from"]').setValue('12')
+    await open(w, 'flame')
+    await open(w, 'starforce')
+    expect((w.find('[data-test="sf-from"]').element as HTMLInputElement).value).toBe('12')
   })
 
-  it('hides the exceptional tab unless the item can be enhanced and rules exist', () => {
-    expect(tab(mountEditor(RING).w, 'exceptional').exists()).toBe(false)
-    expect(tab(mountEditor(FACE_EX).w, 'exceptional').exists()).toBe(true)
-    const locked = new Set<EnhanceTab>(['exceptional'])
-    expect(tab(mountEditor(FACE_EX, { locked }).w, 'exceptional').exists()).toBe(false)
+  it('potential panel renders only its kind', async () => {
+    const { w } = mountEditor(CAP_BOSS, { active: 'bonusPotential' })
+    const panel = w.find('[data-test="panel-bonusPotential"]')
+    expect(panel.find('[data-test="pot-grade-additional"]').exists()).toBe(true)
+    expect(panel.find('[data-test="pot-grade-potential"]').exists()).toBe(false)
+    expect(panel.text()).toContain('附加潛在能力')
+    expect(panel.text().replace(/附加潛在能力/g, '')).not.toContain('潛在能力')
+
+    await open(w, 'potential')
+    const main = w.find('[data-test="panel-potential"]')
+    expect(main.find('[data-test="pot-grade-potential"]').exists()).toBe(true)
+    expect(main.find('[data-test="pot-grade-additional"]').exists()).toBe(false)
+  })
+
+  it('potential load failure shows a retry that emits retryPotential', async () => {
+    const { w } = mountEditor(CAP_BOSS, { active: 'potential', potential: false, potentialError: 'HTTP 503' })
+    expect(w.find('[data-test="potential-error"]').text()).toContain('潛能選項載入失敗')
+    await w.find('[data-test="potential-retry"]').trigger('click')
+    expect(w.emitted('retryPotential')).toHaveLength(1)
   })
 })
 
@@ -288,9 +306,11 @@ describe('PotentialTab', () => {
     expect(state.potential.lines[0]).toBe(opts[0].text())
     expect(state.potential.lines[0]).not.toContain('#')
 
+    expect(w.find('[data-test="panel-potential"] [data-test="kms-notice"]').exists()).toBe(true)
+
+    await open(w, 'bonusPotential')
     await w.find('[data-test="pot-grade-additional"]').setValue('稀有')
     expect(state.additional.grade).toBe('稀有')
-    expect(w.find('[data-test="panel-potential"] [data-test="kms-notice"]').exists()).toBe(true)
   })
 
   it('clears lines that the new grade does not offer', async () => {

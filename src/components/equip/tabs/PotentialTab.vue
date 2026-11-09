@@ -6,7 +6,12 @@ import type { EquipData } from '@/utils/mst/enhance/types'
 import SourceNotice from '../SourceNotice.vue'
 import { kmsNotices } from '../format'
 
-const props = defineProps<{ equip: EquipData; options: PotentialOption[] | null }>()
+const props = defineProps<{
+  equip: EquipData
+  options: PotentialOption[] | null
+  /** Which of the two sidebar panels this is: 潛在能力 or 附加潛在能力 (only that section is rendered). */
+  kind: 'potential' | 'bonusPotential'
+}>()
 const state = defineModel<EnhanceState>('state', { required: true })
 
 type Key = 'potential' | 'additional'
@@ -14,6 +19,8 @@ const SECTIONS: { key: Key; kind: PotentialKind; title: string }[] = [
   { key: 'potential', kind: 'main', title: '潛在能力' },
   { key: 'additional', kind: 'additional', title: '附加潛在能力' }
 ]
+
+const sections = computed(() => SECTIONS.filter((s) => s.key === (props.kind === 'potential' ? 'potential' : 'additional')))
 
 const group = computed(() => POTENTIAL.slotGroupOf(props.equip.category, props.equip.slot))
 
@@ -65,7 +72,7 @@ const kms = computed(() =>
   <div class="potential-tab">
     <div v-if="!options" class="text-muted">潛能選項載入中…</div>
     <template v-else>
-      <div v-for="s in SECTIONS" :key="s.key" class="pot-section">
+      <div v-for="s in sections" :key="s.key" class="pot-section">
         <div class="section-title">{{ s.title }}</div>
         <div class="row g-2">
           <div class="col-12 col-sm-3">
